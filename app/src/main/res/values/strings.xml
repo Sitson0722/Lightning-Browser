@@ -275,6 +275,12 @@
     <string name="action_delete_all_bookmarks">Delete all bookmarks</string>
     <string name="upsell_plus_version">Upgrade to Lightning Plus to block ads</string>
     <string name="message_open_download_fail">This file doesn\'t exist anymore</string>
+    <string name="download_status_pending">Pending</string>
+    <string name="download_status_running">Downloading</string>
+    <string name="download_status_paused">Paused</string>
+    <string name="download_status_complete">Completed</string>
+    <string name="download_status_failed">Failed: %1$s</string>
+    <string name="download_status_unavailable">Unavailable</string>
 
     <string name="tab_style_title">Tab Style</string>
     <string name="tab_style_desktop">Desktop</string>

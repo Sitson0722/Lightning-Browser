@@ -44,9 +44,7 @@ class DownloadPageFactory @Inject constructor(
 
     override suspend fun buildPage(): String = withContext(coroutineDispatchers.io) {
         val colorScheme = themeProvider.colorScheme()
-        val downloads = manager.getAllDownloads().mapNotNull { download ->
-            download.resolveLocation()?.let { location -> download to location }
-        }
+        val downloads = manager.getAllDownloads().map(DownloadEntry::resolveDownload)
         val content = parse(listPageReader.provideHtml()) andBuild {
             title { application.getString(R.string.action_downloads) }
             style { content ->
@@ -67,11 +65,17 @@ class DownloadPageFactory @Inject constructor(
             body {
                 val repeatableElement = findId("repeated").removeElement()
                 id("content") {
-                    downloads.forEach { (download, location) ->
+                    downloads.forEach { resolvedDownload ->
+                        val download = resolvedDownload.entry
                         appendChild(repeatableElement.clone {
-                            tag("a") { attr("href", location) }
+                            tag("a") {
+                                resolvedDownload.openUri?.let { attr("href", it) }
+                                    ?: removeAttr("href")
+                            }
                             id("title") { text(createFileTitle(download)) }
-                            id("url") { text(download.url) }
+                            id("url") {
+                                text("${resolvedDownload.statusText} — ${download.url}")
+                            }
                         })
                     }
                 }
@@ -99,32 +103,78 @@ class DownloadPageFactory @Inject constructor(
         return "${downloadItem.title} $contentSize"
     }
 
-    private suspend fun DownloadEntry.resolveLocation(): String? {
+    private fun DownloadEntry.resolveDownload(): ResolvedDownload {
         if (downloadManagerId < 0L) {
-            return location.takeIf { legacyLocation ->
-                legacyLocation.removePrefix(FILE).let(::File).exists()
+            val legacyLocation = location.takeIf {
+                it.removePrefix(FILE).let(::File).exists()
             }
+            return ResolvedDownload(
+                entry = this,
+                openUri = legacyLocation,
+                statusText = if (legacyLocation != null) {
+                    application.getString(R.string.download_status_complete)
+                } else {
+                    application.getString(R.string.download_status_unavailable)
+                }
+            )
         }
 
-        val status = downloadManager.query(
+        val systemStatus = downloadManager.query(
             DownloadManager.Query().setFilterById(downloadManagerId)
-        )?.use { cursor -> cursor.downloadStatus() } ?: DownloadManager.STATUS_FAILED
+        )?.use(Cursor::downloadStatus) ?: SystemDownloadStatus.Unavailable
 
-        return when (status) {
-            DownloadManager.STATUS_SUCCESSFUL ->
-                downloadManager.getUriForDownloadedFile(downloadManagerId)?.toString()
-            DownloadManager.STATUS_FAILED -> {
-                manager.deleteDownload(location)
-                null
-            }
-            else -> null
+        val openUri = if (systemStatus.status == DownloadManager.STATUS_SUCCESSFUL) {
+            downloadManager.getUriForDownloadedFile(downloadManagerId)?.toString()
+        } else {
+            null
         }
+        return ResolvedDownload(this, openUri, systemStatus.displayText())
     }
 
-    private fun Cursor.downloadStatus(): Int? = if (moveToFirst()) {
-        getInt(getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+    private fun Cursor.downloadStatus(): SystemDownloadStatus = if (moveToFirst()) {
+        SystemDownloadStatus(
+            status = getInt(getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
+            reason = getInt(getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+        )
     } else {
-        null
+        SystemDownloadStatus.Unavailable
+    }
+
+    private fun SystemDownloadStatus.displayText(): String = when (status) {
+        DownloadManager.STATUS_PENDING -> application.getString(R.string.download_status_pending)
+        DownloadManager.STATUS_RUNNING -> application.getString(R.string.download_status_running)
+        DownloadManager.STATUS_PAUSED -> application.getString(R.string.download_status_paused)
+        DownloadManager.STATUS_SUCCESSFUL ->
+            application.getString(R.string.download_status_complete)
+        DownloadManager.STATUS_FAILED -> application.getString(
+            R.string.download_status_failed,
+            failureReason(reason)
+        )
+        else -> application.getString(R.string.download_status_unavailable)
+    }
+
+    private fun failureReason(reason: Int): String = when (reason) {
+        DownloadManager.ERROR_CANNOT_RESUME -> "cannot resume"
+        DownloadManager.ERROR_DEVICE_NOT_FOUND -> "storage unavailable"
+        DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "file already exists"
+        DownloadManager.ERROR_FILE_ERROR -> "file error"
+        DownloadManager.ERROR_HTTP_DATA_ERROR -> "HTTP data error"
+        DownloadManager.ERROR_INSUFFICIENT_SPACE -> "insufficient storage"
+        DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "too many redirects"
+        DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "HTTP error"
+        else -> "error $reason"
+    }
+
+    private data class ResolvedDownload(
+        val entry: DownloadEntry,
+        val openUri: String?,
+        val statusText: String,
+    )
+
+    private data class SystemDownloadStatus(val status: Int, val reason: Int) {
+        companion object {
+            val Unavailable = SystemDownloadStatus(status = -1, reason = 0)
+        }
     }
 
     companion object {
