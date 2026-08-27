@@ -12,7 +12,10 @@ import acr.browser.lightning.resources.ResourceProvider
 import acr.browser.lightning.utils.FileUtils
 import android.app.Application
 import android.app.DownloadManager
+import android.content.ContentValues
+import android.os.Build
 import android.os.Environment
+import android.provider.MediaStore
 import android.text.format.Formatter
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
@@ -68,6 +71,24 @@ class DefaultFileDownloader @Inject constructor(
                     else -> "$downloadDirectory/$guessFileName"
                 }
 
+            val contentSize = if (normalizedPendingDownload.contentLength > 0) {
+                Formatter.formatFileSize(application, normalizedPendingDownload.contentLength)
+            } else {
+                resourceProvider.stringResource(R.string.unknown_size)
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                downloadIntoMediaStore(
+                    pendingDownload = normalizedPendingDownload,
+                    cookie = cookie,
+                    fileName = guessFileName,
+                    fileSubPath = fileSubPath,
+                    mimeType = guessMimeType,
+                    contentSize = contentSize,
+                )
+                return@withContext
+            }
+
             val request = DownloadManager.Request(normalizedPendingDownload.url.toUri())
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(true)
@@ -87,12 +108,6 @@ class DefaultFileDownloader @Inject constructor(
                 request.addRequestHeader("User-Agent", it)
             }
 
-            val contentSize = if (normalizedPendingDownload.contentLength > 0) {
-                Formatter.formatFileSize(application, normalizedPendingDownload.contentLength)
-            } else {
-                resourceProvider.stringResource(R.string.unknown_size)
-            }
-
             val downloadManagerId = downloadManager.enqueue(request)
 
             downloadsRepository.addDownloadIfNotExists(
@@ -106,6 +121,70 @@ class DefaultFileDownloader @Inject constructor(
             )
             Unit
         }
+
+    private suspend fun downloadIntoMediaStore(
+        pendingDownload: PendingDownload,
+        cookie: String?,
+        fileName: String,
+        fileSubPath: String,
+        mimeType: String,
+        contentSize: String,
+    ) = withContext(coroutineDispatchers.network) {
+        val relativeDirectory = fileSubPath.substringBeforeLast('/', missingDelimiterValue = "")
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, mimeType)
+            put(
+                MediaStore.Downloads.RELATIVE_PATH,
+                listOf(Environment.DIRECTORY_DOWNLOADS, relativeDirectory)
+                    .filter(String::isNotBlank)
+                    .joinToString("/")
+            )
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val contentResolver = application.contentResolver
+        val destination = requireNotNull(
+            contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+        ) { "Unable to create download destination" }
+
+        try {
+            val request = Request.Builder().url(pendingDownload.url).get().apply {
+                cookie?.takeIf(String::isNotBlank)?.let { addHeader("Cookie", it) }
+                pendingDownload.userAgent?.takeIf(String::isNotBlank)?.let {
+                    addHeader("User-Agent", it)
+                }
+            }.build()
+
+            okHttpClient.await().newCall(request).execute().use { response ->
+                check(response.isSuccessful) { "Download failed with HTTP ${response.code}" }
+                val body = requireNotNull(response.body) { "Download response had no body" }
+                contentResolver.openOutputStream(destination, "w").use { output ->
+                    requireNotNull(output) { "Unable to open download destination" }
+                    body.byteStream().use { input -> input.copyTo(output) }
+                }
+            }
+
+            contentResolver.update(
+                destination,
+                ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
+                null,
+                null
+            )
+            downloadsRepository.addDownloadIfNotExists(
+                DownloadEntry(
+                    url = pendingDownload.url,
+                    location = destination.toString(),
+                    title = fileName,
+                    contentSize = contentSize,
+                    downloadManagerId = DownloadEntry.MEDIA_STORE_DOWNLOAD_ID,
+                )
+            )
+        } catch (error: Exception) {
+            contentResolver.delete(destination, null, null)
+            logger.log(TAG, "MediaStore download failed: ${error.message}")
+            throw error
+        }
+    }
 
     private suspend fun fetchFileInfo(
         cookie: String?,

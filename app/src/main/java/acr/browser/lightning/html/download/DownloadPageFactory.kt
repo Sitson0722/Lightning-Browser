@@ -106,6 +106,13 @@ class DownloadPageFactory @Inject constructor(
     }
 
     private fun DownloadEntry.resolveDownload(): ResolvedDownload {
+        if (downloadManagerId == DownloadEntry.MEDIA_STORE_DOWNLOAD_ID) {
+            return ResolvedDownload(
+                entry = this,
+                openUri = location,
+                statusText = application.getString(R.string.download_status_complete)
+            )
+        }
         if (downloadManagerId < 0L) {
             val legacyLocation = location.takeIf {
                 it.removePrefix(FILE).let(::File).exists()

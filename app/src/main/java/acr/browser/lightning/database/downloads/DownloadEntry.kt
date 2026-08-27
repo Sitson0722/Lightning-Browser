@@ -15,4 +15,9 @@ data class DownloadEntry(
     val title: String,
     val contentSize: String,
     val downloadManagerId: Long = -1L,
-)
+) {
+    companion object {
+        /** Entry downloaded directly into Android MediaStore rather than DownloadManager. */
+        const val MEDIA_STORE_DOWNLOAD_ID = -2L
+    }
+}
