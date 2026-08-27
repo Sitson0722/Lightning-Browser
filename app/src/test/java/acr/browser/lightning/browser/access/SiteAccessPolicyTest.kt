@@ -62,6 +62,21 @@ class SiteAccessPolicyTest {
         assertThat(policy.isUrlAllowed("file:///internal/homepage.html", closedClock)).isTrue()
     }
 
+    @Test
+    fun `direct file downloads are allowed from unsaved domains`() {
+        val closedClock = clockAt("2026-01-01T16:00:00Z")
+
+        assertThat(
+            policy.isUrlAllowed("https://files.example.org/report.pdf", closedClock)
+        ).isTrue()
+        assertThat(
+            policy.isUrlAllowed("https://files.example.org/archive.ZIP?source=mail", closedClock)
+        ).isTrue()
+        assertThat(
+            policy.isUrlAllowed("https://files.example.org/ordinary-page", closedClock)
+        ).isFalse()
+    }
+
     private fun clockAt(instant: String): Clock =
         Clock.fixed(Instant.parse(instant), ZoneOffset.UTC)
 }

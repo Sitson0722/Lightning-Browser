@@ -25,6 +25,7 @@ class SiteAccessPolicy @Inject constructor(
     }
 
     fun isUrlAllowed(url: String, clock: Clock = Clock.systemUTC()): Boolean {
+        if (isDownloadUrl(url)) return true
         val host = normalizedHost(url) ?: return true
         if (isEditingWindowOpen(clock)) return true
 
@@ -73,6 +74,20 @@ class SiteAccessPolicy @Inject constructor(
         return uri.host?.lowercase()?.trimEnd('.')?.takeIf(String::isNotBlank)
     }
 
+    /**
+     * Identifies direct links to common downloadable file types. These links are always allowed so
+     * WebView can hand them to its download listener, even when their host is not allow-listed.
+     */
+    private fun isDownloadUrl(url: String): Boolean {
+        val uri = Uri.parse(url)
+        if (uri.scheme != "http" && uri.scheme != "https") return false
+        val extension = uri.lastPathSegment
+            ?.substringAfterLast('.', missingDelimiterValue = "")
+            ?.lowercase()
+            .orEmpty()
+        return extension in DOWNLOAD_EXTENSIONS
+    }
+
     sealed interface AddResult {
         data class Added(val domain: String) : AddResult
         data object WindowClosed : AddResult
@@ -88,5 +103,11 @@ class SiteAccessPolicy @Inject constructor(
         val UTC_PLUS_EIGHT: ZoneOffset = ZoneOffset.ofHours(8)
         val EDITING_WINDOW_START: LocalTime = LocalTime.of(22, 0)
         val EDITING_WINDOW_END: LocalTime = LocalTime.of(23, 0)
+        val DOWNLOAD_EXTENSIONS: Set<String> = setOf(
+            "7z", "apk", "avi", "csv", "doc", "docx", "epub", "gz", "jpeg", "jpg",
+            "m4a", "mkv", "mov", "mp3", "mp4", "odp", "ods", "odt", "pdf", "png",
+            "ppt", "pptx", "rar", "rtf", "tar", "tgz", "txt", "wav", "webm", "webp",
+            "xls", "xlsx", "xml", "zip"
+        )
     }
 }
