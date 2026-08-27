@@ -116,7 +116,6 @@ dependencies {
     val datastore = "1.2.1"
     val coil = "3.5.0"
     val coroutines = "1.11.0"
-    val leakcanary = "2.14"
     val lifecycle = "2.11.0"
     val serialization = "1.11.0"
 
@@ -166,12 +165,7 @@ dependencies {
     implementation("org.jsoup:jsoup:1.23.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("com.squareup.leakcanary:leakcanary-android-core:$leakcanary")
-    debugImplementation("com.squareup.leakcanary:shark:$leakcanary")
-
     compileOnly("javax.annotation:jsr250-api:1.0")
-
-    debugRuntimeOnly("com.squareup.leakcanary:leakcanary-android:$leakcanary")
 
     testImplementation("app.cash.turbine:turbine:1.2.1")
     testImplementation("junit:junit:4.13.2")

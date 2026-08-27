@@ -29,16 +29,16 @@ class SiteAccessPolicyTest {
 
     @Test
     fun `editing window uses fixed UTC plus eight boundaries`() {
-        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T05:59:59Z"))).isFalse()
-        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T06:00:00Z"))).isTrue()
-        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T06:59:59Z"))).isTrue()
-        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T07:00:00Z"))).isFalse()
+        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T13:59:59Z"))).isFalse()
+        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T14:00:00Z"))).isTrue()
+        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T14:59:59Z"))).isTrue()
+        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T15:00:00Z"))).isFalse()
     }
 
     @Test
     fun `site can only be added during editing window`() {
-        val closedResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T05:00:00Z"))
-        val openResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T06:30:00Z"))
+        val closedResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T13:00:00Z"))
+        val openResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T14:30:00Z"))
 
         assertThat(closedResult).isEqualTo(SiteAccessPolicy.AddResult.WindowClosed)
         assertThat(openResult).isEqualTo(SiteAccessPolicy.AddResult.Added("example.com"))
@@ -46,8 +46,8 @@ class SiteAccessPolicyTest {
 
     @Test
     fun `saved domain and its subdomains are allowed outside editing window`() {
-        policy.allowUrl("https://www.example.com/page", clockAt("2026-01-01T06:30:00Z"))
-        val closedClock = clockAt("2026-01-01T08:00:00Z")
+        policy.allowUrl("https://www.example.com/page", clockAt("2026-01-01T14:30:00Z"))
+        val closedClock = clockAt("2026-01-01T16:00:00Z")
 
         assertThat(policy.isUrlAllowed("https://example.com", closedClock)).isTrue()
         assertThat(policy.isUrlAllowed("https://news.example.com", closedClock)).isTrue()
@@ -56,7 +56,7 @@ class SiteAccessPolicyTest {
 
     @Test
     fun `internal browser URLs remain allowed`() {
-        val closedClock = clockAt("2026-01-01T08:00:00Z")
+        val closedClock = clockAt("2026-01-01T16:00:00Z")
 
         assertThat(policy.isUrlAllowed("about:blank", closedClock)).isTrue()
         assertThat(policy.isUrlAllowed("file:///internal/homepage.html", closedClock)).isTrue()

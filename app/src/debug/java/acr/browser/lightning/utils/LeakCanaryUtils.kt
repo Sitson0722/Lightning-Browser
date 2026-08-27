@@ -1,30 +1,14 @@
 package acr.browser.lightning.utils
 
-import acr.browser.lightning.concurrency.AppCoroutineScope
-import acr.browser.lightning.concurrency.CoroutineDispatchers
-import acr.browser.lightning.preference.DeveloperPreferenceStore
-import kotlinx.coroutines.launch
-import leakcanary.LeakCanary
 import javax.inject.Inject
 
 /**
- * Sets up LeakCanary.
+ * No-op debug utility. LeakCanary is intentionally excluded from personal builds.
  */
-class LeakCanaryUtils @Inject constructor(
-    private val developerPreferenceStore: DeveloperPreferenceStore,
-    private val appCoroutineScope: AppCoroutineScope,
-    private val coroutineDispatchers: CoroutineDispatchers,
-) {
+class LeakCanaryUtils @Inject constructor() {
 
     /**
-     * Setup LeakCanary
+     * No-op retained to keep debug and release source sets compatible.
      */
-    fun setup() {
-        appCoroutineScope.launch(coroutineDispatchers.io) {
-            LeakCanary.config = LeakCanary.config.copy(
-                dumpHeap = developerPreferenceStore.useLeakCanary.get()
-            )
-        }
-    }
-
+    fun setup() = Unit
 }

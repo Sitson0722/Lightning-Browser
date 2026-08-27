@@ -357,6 +357,6 @@
     <!-- Allowed sites -->
     <string name="action_allow_site">Allow this site</string>
     <string name="message_site_allowed">%1$s added to allowed sites</string>
-    <string name="message_allow_window_closed">Sites can only be added from 14:00 to 15:00 (UTC+8)</string>
+    <string name="message_allow_window_closed">Sites can only be added from 22:00 to 23:00 (UTC+8)</string>
     <string name="message_allow_invalid_url">Open a website before adding it to allowed sites</string>
 </resources>

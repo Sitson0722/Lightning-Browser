@@ -58,7 +58,7 @@ class SiteAccessPolicy @Inject constructor(
               <body>
                 <h1>Site blocked</h1>
                 <p><strong>$host</strong> is not on your allowed-sites list.</p>
-                <p>You can browse freely and add sites from 14:00 to 15:00 (UTC+8). Outside that hour, only saved sites can be opened.</p>
+                <p>You can browse freely and add sites from 22:00 to 23:00 (UTC+8). Outside that hour, only saved sites can be opened.</p>
               </body>
             </html>
         """.trimIndent()
@@ -86,7 +86,7 @@ class SiteAccessPolicy @Inject constructor(
         const val PREFERENCES_NAME = "site_access_policy"
         const val ALLOWED_DOMAINS = "allowed_domains"
         val UTC_PLUS_EIGHT: ZoneOffset = ZoneOffset.ofHours(8)
-        val EDITING_WINDOW_START: LocalTime = LocalTime.of(14, 0)
-        val EDITING_WINDOW_END: LocalTime = LocalTime.of(15, 0)
+        val EDITING_WINDOW_START: LocalTime = LocalTime.of(22, 0)
+        val EDITING_WINDOW_END: LocalTime = LocalTime.of(23, 0)
     }
 }

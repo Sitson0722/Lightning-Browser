@@ -1,8 +1,6 @@
 package acr.browser.lightning.settings.screens
 
 import acr.browser.lightning.R
-import acr.browser.lightning.device.BuildInfo
-import acr.browser.lightning.device.BuildType
 import acr.browser.lightning.resources.ResourceProvider
 import acr.browser.lightning.settings.framework.ClickableOnClick
 import acr.browser.lightning.settings.framework.ClickableState
@@ -12,7 +10,6 @@ import javax.inject.Inject
 
 class RootSettingsScreen @Inject constructor(
     private val resourceProvider: ResourceProvider,
-    private val buildInfo: BuildInfo,
 ) {
     fun createSettingsFrameworkState(): SettingsFrameworkState = SettingsFrameworkState(
         title = resourceProvider.stringResource(R.string.settings),
@@ -51,15 +48,6 @@ class RootSettingsScreen @Inject constructor(
                 summary = { resourceProvider.stringResource(R.string.faq_description) },
                 onClick = ClickableOnClick.WebLink("http://acrdevelopment.org/lightning/faq"),
             ),
-        ) + if (buildInfo.buildType == BuildType.DEBUG) {
-            listOf(
-                ClickableState(
-                    title = resourceProvider.stringResource(R.string.debug_title),
-                    onClick = ClickableOnClick.Navigate(SettingsNavigation.DEBUG),
-                )
-            )
-        } else {
-            emptyList()
-        }
+        )
     )
 }
