@@ -44,7 +44,9 @@ class DownloadPageFactory @Inject constructor(
 
     override suspend fun buildPage(): String = withContext(coroutineDispatchers.io) {
         val colorScheme = themeProvider.colorScheme()
-        val downloads = manager.getAllDownloads().map(DownloadEntry::resolveDownload)
+        val downloads = manager.getAllDownloads().map { download ->
+            download.resolveDownload()
+        }
         val content = parse(listPageReader.provideHtml()) andBuild {
             title { application.getString(R.string.action_downloads) }
             style { content ->
@@ -121,7 +123,7 @@ class DownloadPageFactory @Inject constructor(
 
         val systemStatus = downloadManager.query(
             DownloadManager.Query().setFilterById(downloadManagerId)
-        )?.use(Cursor::downloadStatus) ?: SystemDownloadStatus.Unavailable
+        )?.use { cursor -> cursor.downloadStatus() } ?: SystemDownloadStatus.Unavailable
 
         val openUri = if (systemStatus.status == DownloadManager.STATUS_SUCCESSFUL) {
             downloadManager.getUriForDownloadedFile(downloadManagerId)?.toString()
