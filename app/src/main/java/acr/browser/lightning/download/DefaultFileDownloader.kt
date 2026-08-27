@@ -20,6 +20,7 @@ import android.text.format.Formatter
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.webkit.URLUtil
+import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.withContext
@@ -122,6 +123,7 @@ class DefaultFileDownloader @Inject constructor(
             Unit
         }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private suspend fun downloadIntoMediaStore(
         pendingDownload: PendingDownload,
         cookie: String?,
