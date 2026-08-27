@@ -4,6 +4,7 @@ import acr.browser.lightning.BrowserUiEvent
 import acr.browser.lightning.R
 import acr.browser.lightning.adblock.allowlist.AllowListModel
 import acr.browser.lightning.browser.history.HistoryRecord
+import acr.browser.lightning.browser.access.SiteAccessPolicy
 import acr.browser.lightning.browser.keys.KeyCombo
 import acr.browser.lightning.browser.menu.MenuSelection
 import acr.browser.lightning.browser.notification.TabCountNotifier
@@ -89,6 +90,7 @@ class BrowserPresenter @Inject constructor(
     private val searchEngineProvider: SearchEngineProvider,
     private val historyPageFactory: HistoryPageFactory,
     private val allowListModel: AllowListModel,
+    private val siteAccessPolicy: SiteAccessPolicy,
     private val tabCountNotifier: TabCountNotifier,
     @IncognitoMode private val incognitoMode: Boolean,
     coroutineDispatchers: CoroutineDispatchers,
@@ -632,6 +634,22 @@ class BrowserPresenter @Inject constructor(
             MenuSelection.BOOKMARKS -> state.updateSelf { copy(openBookmarks = true) }
             MenuSelection.ADD_BOOKMARK -> currentTab?.url?.takeIf { !it.isSpecialUrl() }
                 ?.let { showAddBookmarkDialog() }
+
+            MenuSelection.ALLOW_SITE -> {
+                val message = when (val result = siteAccessPolicy.allowUrl(currentTab?.url.orEmpty())) {
+                    is SiteAccessPolicy.AddResult.Added -> resourceProvider.stringResource(
+                        R.string.message_site_allowed,
+                        result.domain
+                    )
+                    SiteAccessPolicy.AddResult.WindowClosed -> resourceProvider.stringResource(
+                        R.string.message_allow_window_closed
+                    )
+                    SiteAccessPolicy.AddResult.InvalidUrl -> resourceProvider.stringResource(
+                        R.string.message_allow_invalid_url
+                    )
+                }
+                showSnackbar(message)
+            }
 
             MenuSelection.SETTINGS -> navigator.openSettings()
             MenuSelection.BACK -> onBackClick()

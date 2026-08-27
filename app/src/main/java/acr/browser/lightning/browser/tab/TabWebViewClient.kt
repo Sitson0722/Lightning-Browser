@@ -3,6 +3,7 @@ package acr.browser.lightning.browser.tab
 import acr.browser.lightning.R
 import acr.browser.lightning.adblock.AdBlocker
 import acr.browser.lightning.adblock.allowlist.AllowListModel
+import acr.browser.lightning.browser.access.SiteAccessPolicy
 import acr.browser.lightning.browser.tab.settings.TabSettings
 import acr.browser.lightning.concurrency.TabCoroutineScope
 import acr.browser.lightning.databinding.DialogAuthRequestBinding
@@ -48,6 +49,7 @@ import kotlin.math.abs
 class TabWebViewClient @AssistedInject constructor(
     private val adBlocker: Deferred<@JvmSuppressWildcards AdBlocker>,
     private val allowListModel: AllowListModel,
+    private val siteAccessPolicy: SiteAccessPolicy,
     private val urlHandler: UrlHandler,
     @Assisted private val headers: Map<String, String>,
     private val sslWarningPreferences: SslWarningPreferences,
@@ -298,18 +300,39 @@ class TabWebViewClient @AssistedInject constructor(
         }.resizeAndShow()
     }
 
-    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-        urlHandler.shouldOverrideLoading(
+    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+        val url = request.url.toString()
+        if (request.isForMainFrame && !siteAccessPolicy.isUrlAllowed(url)) {
+            view.loadDataWithBaseURL(
+                null,
+                siteAccessPolicy.blockedPageHtml(url),
+                BLOCKED_PAGE_MIME_TYPE,
+                BLOCKED_RESPONSE_ENCODING,
+                null
+            )
+            return true
+        }
+        return urlHandler.shouldOverrideLoading(
             tabSettings.openAvailableAppsEnabled,
             view,
-            request.url.toString(),
+            url,
             headers
         ) || super.shouldOverrideUrlLoading(view, request)
+    }
 
     override fun shouldInterceptRequest(
         view: WebView,
         request: WebResourceRequest
     ): WebResourceResponse? {
+        if (request.isForMainFrame && !siteAccessPolicy.isUrlAllowed(request.url.toString())) {
+            return WebResourceResponse(
+                BLOCKED_PAGE_MIME_TYPE,
+                BLOCKED_RESPONSE_ENCODING,
+                ByteArrayInputStream(
+                    siteAccessPolicy.blockedPageHtml(request.url.toString()).toByteArray()
+                )
+            )
+        }
         if (shouldBlockRequest(currentUrl, request.url)) {
             val empty = ByteArrayInputStream(emptyResponseByteArray)
             return WebResourceResponse(BLOCKED_RESPONSE_MIME_TYPE, BLOCKED_RESPONSE_ENCODING, empty)
@@ -354,6 +377,7 @@ class TabWebViewClient @AssistedInject constructor(
         private val emptyResponseByteArray: ByteArray = byteArrayOf()
 
         private const val BLOCKED_RESPONSE_MIME_TYPE = "text/plain"
+        private const val BLOCKED_PAGE_MIME_TYPE = "text/html"
         private const val BLOCKED_RESPONSE_ENCODING = "utf-8"
     }
 }

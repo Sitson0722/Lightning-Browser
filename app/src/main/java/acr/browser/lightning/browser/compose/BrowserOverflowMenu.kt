@@ -128,6 +128,15 @@ fun BrowserOverflowMenu(presenter: BrowserPresenter, browserViewState: BrowserCo
                     }
                 )
             }
+            if (browserViewState.enableFullMenu) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_allow_site)) },
+                    onClick = {
+                        presenter.onEvent(BrowserUiEvent.MenuClick(MenuSelection.ALLOW_SITE))
+                        dropDownExpanded = false
+                    }
+                )
+            }
             if (!browserViewState.isIncognito) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.settings)) },
