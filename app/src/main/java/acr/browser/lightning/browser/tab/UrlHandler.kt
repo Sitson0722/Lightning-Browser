@@ -41,6 +41,9 @@ class UrlHandler @Inject constructor(
         url: String,
         headers: Map<String, String>
     ): Boolean {
+        if (url.startsWith(CONTENT_SCHEME)) {
+            return openDownloadedFile(url)
+        }
         if (!openAvailableAppsEnabled || incognitoMode) {
             // If we are in incognito, immediately load, we don't want the url to leave the app
             return continueLoadingUrl(view, url, headers)
@@ -137,6 +140,27 @@ class UrlHandler @Inject constructor(
         return false
     }
 
+    private fun openDownloadedFile(url: String): Boolean {
+        val uri = url.toUri()
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(
+                    uri,
+                    activity.contentResolver.getType(uri) ?: "application/octet-stream"
+                )
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            activity.startActivity(intent)
+            true
+        } catch (_: ActivityNotFoundException) {
+            activity.snackbar(R.string.message_open_download_fail)
+            true
+        } catch (_: SecurityException) {
+            activity.snackbar(R.string.message_open_download_fail)
+            true
+        }
+    }
+
     /**
      * Creates a new intent that can launch the email app with a subject, address, body, and cc. It
      * is used to handle mail:to links.
@@ -170,5 +194,6 @@ class UrlHandler @Inject constructor(
 
     companion object {
         private const val TAG = "UrlHandler"
+        private const val CONTENT_SCHEME = "content://"
     }
 }

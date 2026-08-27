@@ -22,6 +22,8 @@ import acr.browser.lightning.html.jsoup.title
 import acr.browser.lightning.theme.ThemeProvider
 import acr.browser.lightning.utils.ThreadSafeFileProvider
 import android.app.Application
+import android.app.DownloadManager
+import android.database.Cursor
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileWriter
@@ -33,6 +35,7 @@ import javax.inject.Inject
 class DownloadPageFactory @Inject constructor(
     private val application: Application,
     private val manager: DownloadsRepository,
+    private val downloadManager: DownloadManager,
     private val listPageReader: ListPageReader,
     private val themeProvider: ThemeProvider,
     private val coroutineDispatchers: CoroutineDispatchers,
@@ -41,7 +44,9 @@ class DownloadPageFactory @Inject constructor(
 
     override suspend fun buildPage(): String = withContext(coroutineDispatchers.io) {
         val colorScheme = themeProvider.colorScheme()
-        val downloads = manager.getAllDownloads()
+        val downloads = manager.getAllDownloads().mapNotNull { download ->
+            download.resolveLocation()?.let { location -> download to location }
+        }
         val content = parse(listPageReader.provideHtml()) andBuild {
             title { application.getString(R.string.action_downloads) }
             style { content ->
@@ -62,9 +67,9 @@ class DownloadPageFactory @Inject constructor(
             body {
                 val repeatableElement = findId("repeated").removeElement()
                 id("content") {
-                    downloads.forEach { download ->
+                    downloads.forEach { (download, location) ->
                         appendChild(repeatableElement.clone {
-                            tag("a") { attr("href", download.location) }
+                            tag("a") { attr("href", location) }
                             id("title") { text(createFileTitle(download)) }
                             id("url") { text(download.url) }
                         })
@@ -92,6 +97,34 @@ class DownloadPageFactory @Inject constructor(
         }
 
         return "${downloadItem.title} $contentSize"
+    }
+
+    private suspend fun DownloadEntry.resolveLocation(): String? {
+        if (downloadManagerId < 0L) {
+            return location.takeIf { legacyLocation ->
+                legacyLocation.removePrefix(FILE).let(::File).exists()
+            }
+        }
+
+        val status = downloadManager.query(
+            DownloadManager.Query().setFilterById(downloadManagerId)
+        )?.use { cursor -> cursor.downloadStatus() } ?: DownloadManager.STATUS_FAILED
+
+        return when (status) {
+            DownloadManager.STATUS_SUCCESSFUL ->
+                downloadManager.getUriForDownloadedFile(downloadManagerId)?.toString()
+            DownloadManager.STATUS_FAILED -> {
+                manager.deleteDownload(location)
+                null
+            }
+            else -> null
+        }
+    }
+
+    private fun Cursor.downloadStatus(): Int? = if (moveToFirst()) {
+        getInt(getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+    } else {
+        null
     }
 
     companion object {

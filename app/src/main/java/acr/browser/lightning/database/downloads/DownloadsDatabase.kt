@@ -36,17 +36,24 @@ class DownloadsDatabase @Inject constructor(
                 "${DatabaseUtils.sqlEscapeString(KEY_URL)} TEXT," +
                 "${DatabaseUtils.sqlEscapeString(KEY_LOCATION)} TEXT," +
                 "${DatabaseUtils.sqlEscapeString(KEY_TITLE)} TEXT," +
-                "${DatabaseUtils.sqlEscapeString(KEY_SIZE)} TEXT" +
+                "${DatabaseUtils.sqlEscapeString(KEY_SIZE)} TEXT," +
+                "${DatabaseUtils.sqlEscapeString(KEY_DOWNLOAD_MANAGER_ID)} INTEGER NOT NULL DEFAULT -1" +
                 ')'
         db.execSQL(createDownloadsTable)
     }
 
     // Upgrading database
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Drop older table if it exists
-        db.execSQL("DROP TABLE IF EXISTS ${DatabaseUtils.sqlEscapeString(TABLE_DOWNLOADS)}")
-        // Create tables again
-        onCreate(db)
+        if (oldVersion == 2 && newVersion >= 3) {
+            db.execSQL(
+                "ALTER TABLE ${DatabaseUtils.sqlEscapeString(TABLE_DOWNLOADS)} " +
+                    "ADD COLUMN ${DatabaseUtils.sqlEscapeString(KEY_DOWNLOAD_MANAGER_ID)} " +
+                    "INTEGER NOT NULL DEFAULT -1"
+            )
+        } else {
+            db.execSQL("DROP TABLE IF EXISTS ${DatabaseUtils.sqlEscapeString(TABLE_DOWNLOADS)}")
+            onCreate(db)
+        }
     }
 
     override suspend fun findDownloadForUrl(
@@ -144,11 +151,12 @@ class DownloadsDatabase @Inject constructor(
     /**
      * Maps the fields of [DownloadEntry] to [ContentValues].
      */
-    private fun DownloadEntry.toContentValues() = ContentValues(4).apply {
+    private fun DownloadEntry.toContentValues() = ContentValues(5).apply {
         put(KEY_TITLE, title)
         put(KEY_URL, url)
         put(KEY_LOCATION, location)
         put(KEY_SIZE, contentSize)
+        put(KEY_DOWNLOAD_MANAGER_ID, downloadManagerId)
     }
 
     /**
@@ -159,12 +167,13 @@ class DownloadsDatabase @Inject constructor(
         location = getString(getColumnIndex(KEY_LOCATION)),
         title = getString(getColumnIndex(KEY_TITLE)),
         contentSize = getString(getColumnIndex(KEY_SIZE)),
+        downloadManagerId = getLong(getColumnIndex(KEY_DOWNLOAD_MANAGER_ID)),
     )
 
     companion object {
 
         // Database version
-        private const val DATABASE_VERSION = 2
+        private const val DATABASE_VERSION = 3
 
         // Database name
         private const val DATABASE_NAME = "downloadManager"
@@ -178,6 +187,7 @@ class DownloadsDatabase @Inject constructor(
         private const val KEY_LOCATION = "location"
         private const val KEY_TITLE = "title"
         private const val KEY_SIZE = "size"
+        private const val KEY_DOWNLOAD_MANAGER_ID = "download_manager_id"
     }
 
 }

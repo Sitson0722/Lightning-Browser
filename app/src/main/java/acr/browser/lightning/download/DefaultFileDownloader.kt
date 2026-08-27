@@ -77,12 +77,15 @@ class DefaultFileDownloader @Inject constructor(
                     normalizedPendingDownload.contentDisposition ?: normalizedPendingDownload.url
                 )
                 .setMimeType(guessMimeType)
-                .addRequestHeader("Cookie", cookie)
-                .addRequestHeader("User-Agent", normalizedPendingDownload.userAgent)
                 .setDestinationInExternalPublicDir(
                     Environment.DIRECTORY_DOWNLOADS,
                     fileSubPath
                 )
+
+            cookie?.takeIf(String::isNotBlank)?.let { request.addRequestHeader("Cookie", it) }
+            normalizedPendingDownload.userAgent?.takeIf(String::isNotBlank)?.let {
+                request.addRequestHeader("User-Agent", it)
+            }
 
             val contentSize = if (normalizedPendingDownload.contentLength > 0) {
                 Formatter.formatFileSize(application, normalizedPendingDownload.contentLength)
@@ -90,7 +93,7 @@ class DefaultFileDownloader @Inject constructor(
                 resourceProvider.stringResource(R.string.unknown_size)
             }
 
-            downloadManager.enqueue(request)
+            val downloadManagerId = downloadManager.enqueue(request)
 
             downloadsRepository.addDownloadIfNotExists(
                 DownloadEntry(
@@ -98,6 +101,7 @@ class DefaultFileDownloader @Inject constructor(
                     location = "${FILE}${FileUtils.DEFAULT_DOWNLOAD_PATH}/$fileSubPath",
                     title = guessFileName,
                     contentSize = contentSize,
+                    downloadManagerId = downloadManagerId,
                 )
             )
             Unit
@@ -111,24 +115,24 @@ class DefaultFileDownloader @Inject constructor(
             return@withContext pendingDownload
         }
 
-        val response = okHttpClient.await().newCall(
+        okHttpClient.await().newCall(
             Request.Builder()
                 .url(pendingDownload.url)
                 .head()
                 .addHeader("Cookie", cookie.orEmpty())
                 .addHeader("User-Agent", pendingDownload.userAgent.orEmpty())
                 .build()
-        ).execute()
+        ).execute().use { response ->
+            logger.log(TAG, "HEAD: ${response.headers}")
 
-        logger.log(TAG, "HEAD: ${response.headers}")
-
-        pendingDownload.copy(
-            mimeType = response.header("content-type") ?: pendingDownload.mimeType,
-            contentLength = response.header("content-length")?.toLong()
-                ?: pendingDownload.contentLength,
-            contentDisposition = response.header("content-disposition")
-                ?: pendingDownload.contentDisposition ?: "attachment"
-        )
+            pendingDownload.copy(
+                mimeType = response.header("content-type") ?: pendingDownload.mimeType,
+                contentLength = response.header("content-length")?.toLongOrNull()
+                    ?: pendingDownload.contentLength,
+                contentDisposition = response.header("content-disposition")
+                    ?: pendingDownload.contentDisposition ?: "attachment"
+            )
+        }
     }
 
     companion object {
