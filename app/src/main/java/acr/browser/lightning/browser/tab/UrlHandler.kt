@@ -16,6 +16,7 @@ import android.webkit.MimeTypeMap
 import android.webkit.URLUtil
 import android.webkit.WebView
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
 import java.io.File
 import java.net.URISyntaxException
 import javax.inject.Inject
