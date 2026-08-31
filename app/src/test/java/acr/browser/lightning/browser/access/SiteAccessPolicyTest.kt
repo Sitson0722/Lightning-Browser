@@ -36,12 +36,40 @@ class SiteAccessPolicyTest {
     }
 
     @Test
+    fun `unrestricted browsing includes midday and editing windows`() {
+        assertThat(
+            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T03:59:59Z"))
+        ).isFalse()
+        assertThat(
+            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T04:00:00Z"))
+        ).isTrue()
+        assertThat(
+            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T04:59:59Z"))
+        ).isTrue()
+        assertThat(
+            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T05:00:00Z"))
+        ).isFalse()
+        assertThat(
+            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T14:30:00Z"))
+        ).isTrue()
+    }
+
+    @Test
     fun `site can only be added during editing window`() {
         val closedResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T13:00:00Z"))
+        val middayResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T04:30:00Z"))
         val openResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T14:30:00Z"))
 
         assertThat(closedResult).isEqualTo(SiteAccessPolicy.AddResult.WindowClosed)
+        assertThat(middayResult).isEqualTo(SiteAccessPolicy.AddResult.WindowClosed)
         assertThat(openResult).isEqualTo(SiteAccessPolicy.AddResult.Added("example.com"))
+    }
+
+    @Test
+    fun `unsaved sites are allowed during midday browsing window`() {
+        assertThat(
+            policy.isUrlAllowed("https://unsaved.example", clockAt("2026-01-01T04:30:00Z"))
+        ).isTrue()
     }
 
     @Test
@@ -52,6 +80,17 @@ class SiteAccessPolicyTest {
         assertThat(policy.isUrlAllowed("https://example.com", closedClock)).isTrue()
         assertThat(policy.isUrlAllowed("https://news.example.com", closedClock)).isTrue()
         assertThat(policy.isUrlAllowed("https://example.org", closedClock)).isFalse()
+    }
+
+    @Test
+    fun `built in domains and their subdomains are always allowed`() {
+        val closedClock = clockAt("2026-01-01T16:00:00Z")
+
+        assertThat(policy.isUrlAllowed("https://sitson.pages.dev/path", closedClock)).isTrue()
+        assertThat(policy.isUrlAllowed("https://sixfeet6.github.io/app", closedClock)).isTrue()
+        assertThat(policy.isUrlAllowed("https://my.lzu.edu.cn/portal", closedClock)).isTrue()
+        assertThat(policy.isUrlAllowed("https://login.my.lzu.edu.cn/", closedClock)).isTrue()
+        assertThat(policy.isUrlAllowed("https://notmy.lzu.edu.cn/", closedClock)).isFalse()
     }
 
     @Test

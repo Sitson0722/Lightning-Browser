@@ -9,7 +9,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Restricts top-level browsing to saved domains outside the daily editing window.
+ * Restricts top-level browsing to saved domains outside the daily unrestricted windows.
  *
  * The editing window is fixed to UTC+8 and does not follow the device time zone.
  */
@@ -24,12 +24,18 @@ class SiteAccessPolicy @Inject constructor(
         return !time.isBefore(EDITING_WINDOW_START) && time.isBefore(EDITING_WINDOW_END)
     }
 
+    fun isUnrestrictedBrowsingWindowOpen(clock: Clock = Clock.systemUTC()): Boolean {
+        val time = LocalTime.now(clock.withZone(UTC_PLUS_EIGHT))
+        return isWithin(time, MIDDAY_BROWSING_WINDOW_START, MIDDAY_BROWSING_WINDOW_END) ||
+            isWithin(time, EDITING_WINDOW_START, EDITING_WINDOW_END)
+    }
+
     fun isUrlAllowed(url: String, clock: Clock = Clock.systemUTC()): Boolean {
         if (isDownloadUrl(url)) return true
         val host = normalizedHost(url) ?: return true
-        if (isEditingWindowOpen(clock)) return true
+        if (isUnrestrictedBrowsingWindowOpen(clock)) return true
 
-        return allowedDomains().any { allowedDomain ->
+        return (BUILT_IN_ALLOWED_DOMAINS + allowedDomains()).any { allowedDomain ->
             host == allowedDomain || host.endsWith(".$allowedDomain")
         }
     }
@@ -59,7 +65,7 @@ class SiteAccessPolicy @Inject constructor(
               <body>
                 <h1>Site blocked</h1>
                 <p><strong>$host</strong> is not on your allowed-sites list.</p>
-                <p>You can browse freely and add sites from 22:00 to 23:00 (UTC+8). Outside that hour, only saved sites can be opened.</p>
+                <p>You can browse freely from 12:00 to 13:00 and from 22:00 to 23:00 (UTC+8). Sites can be added to your list during the 22:00 to 23:00 window.</p>
               </body>
             </html>
         """.trimIndent()
@@ -67,6 +73,9 @@ class SiteAccessPolicy @Inject constructor(
 
     private fun allowedDomains(): Set<String> =
         preferences.getStringSet(ALLOWED_DOMAINS, emptySet())?.toSet().orEmpty()
+
+    private fun isWithin(time: LocalTime, start: LocalTime, end: LocalTime): Boolean =
+        !time.isBefore(start) && time.isBefore(end)
 
     private fun normalizedHost(url: String): String? {
         val uri = Uri.parse(url)
@@ -101,8 +110,15 @@ class SiteAccessPolicy @Inject constructor(
         const val PREFERENCES_NAME = "site_access_policy"
         const val ALLOWED_DOMAINS = "allowed_domains"
         val UTC_PLUS_EIGHT: ZoneOffset = ZoneOffset.ofHours(8)
+        val MIDDAY_BROWSING_WINDOW_START: LocalTime = LocalTime.of(12, 0)
+        val MIDDAY_BROWSING_WINDOW_END: LocalTime = LocalTime.of(13, 0)
         val EDITING_WINDOW_START: LocalTime = LocalTime.of(22, 0)
         val EDITING_WINDOW_END: LocalTime = LocalTime.of(23, 0)
+        val BUILT_IN_ALLOWED_DOMAINS: Set<String> = setOf(
+            "sitson.pages.dev",
+            "sixfeet6.github.io",
+            "my.lzu.edu.cn",
+        )
         val DOWNLOAD_EXTENSIONS: Set<String> = setOf(
             "7z", "apk", "avi", "csv", "doc", "docx", "epub", "gz", "jpeg", "jpg",
             "m4a", "mkv", "mov", "mp3", "mp4", "odp", "ods", "odt", "pdf", "png",
