@@ -43,19 +43,19 @@ sealed interface BrowserUiEvent {
     data class KeyComboClick(val keyCombo: KeyCombo) : BrowserUiEvent
 
     /**
-     * Call when the user selects a tab to switch to at the provided [index].
+     * Call when the user selects a tab to switch to with the provided [id].
      */
-    data class TabClick(val index: Int) : BrowserUiEvent
+    data class TabClick(val id: Int) : BrowserUiEvent
 
     /**
-     * Call when the user long presses on a tab at the provided [index].
+     * Call when the user long presses on a tab with the provided [id].
      */
-    data class TabLongClick(val index: Int) : BrowserUiEvent
+    data class TabLongClick(val id: Int) : BrowserUiEvent
 
     /**
-     * Call when the user clicks on the close button for the tab at the provided [index]
+     * Call when the user clicks on the close button for the tab with the provided [id].
      */
-    data class TabClose(val index: Int) : BrowserUiEvent
+    data class TabClose(val id: Int) : BrowserUiEvent
 
     /**
      * Call when the scroll position changes for the tab list.

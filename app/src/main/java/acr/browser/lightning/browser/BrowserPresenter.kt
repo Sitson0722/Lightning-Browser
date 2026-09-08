@@ -319,9 +319,9 @@ class BrowserPresenter @Inject constructor(
                 is BrowserUiEvent.BookmarkDrawerMoved -> onBookmarkDrawerMoved(browserUiEvent.isOpen)
                 is BrowserUiEvent.TabDrawerMoved -> onTabDrawerMoved(browserUiEvent.isOpen)
                 BrowserUiEvent.TabScroll -> onTabScroll()
-                is BrowserUiEvent.TabClose -> onTabClose(browserUiEvent.index)
-                is BrowserUiEvent.TabLongClick -> onTabLongClick(browserUiEvent.index)
-                is BrowserUiEvent.TabClick -> onTabClick(browserUiEvent.index)
+                is BrowserUiEvent.TabClose -> onTabClose(browserUiEvent.id)
+                is BrowserUiEvent.TabLongClick -> onTabLongClick(browserUiEvent.id)
+                is BrowserUiEvent.TabClick -> onTabClick(browserUiEvent.id)
                 is BrowserUiEvent.KeyComboClick -> onKeyComboClick(browserUiEvent.keyCombo)
                 is BrowserUiEvent.MenuClick -> onMenuClick(browserUiEvent.menuSelection)
                 is BrowserUiEvent.ConfirmOpenLocalFile -> onConfirmOpenLocalFile(browserUiEvent.allow)
@@ -482,7 +482,7 @@ class BrowserPresenter @Inject constructor(
 
         tabJobs += browserCoroutineScope.launch {
             tab.closeWindowRequests().collectLatest {
-                onTabClose(state.value.tabs.indexOfCurrentTab())
+                currentTab?.id?.let { onTabClose(it) }
             }
         }
 
@@ -704,9 +704,9 @@ class BrowserPresenter @Inject constructor(
             }
 
             KeyCombo.CTRL_T -> onNewTabClick()
-            KeyCombo.CTRL_W -> onTabClose(state.value.tabs.indexOfCurrentTab())
-            KeyCombo.CTRL_Q -> state.updateSelf {
-                copy(dialog = BrowserViewState.Dialogs.CloseBrowser(tabs.indexOfCurrentTab()))
+            KeyCombo.CTRL_W -> currentTab?.id?.let { onTabClose(it) }
+            KeyCombo.CTRL_Q -> currentTab?.id?.let { id ->
+                state.updateSelf { copy(dialog = BrowserViewState.Dialogs.CloseBrowser(id)) }
             }
 
             KeyCombo.CTRL_R -> onRefreshOrStopClick()
@@ -715,7 +715,7 @@ class BrowserPresenter @Inject constructor(
                 val currentIndex = state.value.tabs.indexOfCurrentTab()
                 val nextIndex =
                     if (currentIndex + 1 < state.value.tabs.size) currentIndex + 1 else 0
-                onTabClick(nextIndex)
+                selectTabAtIndex(nextIndex)
             }
 
             KeyCombo.CTRL_SHIFT_TAB -> {
@@ -725,29 +725,35 @@ class BrowserPresenter @Inject constructor(
                 } else {
                     state.value.tabs.lastIndex
                 }
-                onTabClick(previousIndex)
+                selectTabAtIndex(previousIndex)
             }
 
             KeyCombo.SEARCH -> currentTab?.searchQuery?.let { onSearch(it) }
-            KeyCombo.ALT_0 -> onTabClick(0.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_1 -> onTabClick(1.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_2 -> onTabClick(2.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_3 -> onTabClick(3.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_4 -> onTabClick(4.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_5 -> onTabClick(5.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_6 -> onTabClick(6.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_7 -> onTabClick(7.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_8 -> onTabClick(8.coerceAtMost(state.value.tabs.lastIndex))
-            KeyCombo.ALT_9 -> onTabClick(9.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_0 -> selectTabAtIndex(0.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_1 -> selectTabAtIndex(1.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_2 -> selectTabAtIndex(2.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_3 -> selectTabAtIndex(3.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_4 -> selectTabAtIndex(4.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_5 -> selectTabAtIndex(5.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_6 -> selectTabAtIndex(6.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_7 -> selectTabAtIndex(7.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_8 -> selectTabAtIndex(8.coerceAtMost(state.value.tabs.lastIndex))
+            KeyCombo.ALT_9 -> selectTabAtIndex(9.coerceAtMost(state.value.tabs.lastIndex))
         }
     }
 
-    private suspend fun onTabClick(index: Int) {
-        selectTab(model.selectTab(state.value.tabs[index].id))
+    private suspend fun selectTabAtIndex(index: Int) {
+        state.value.tabs.getOrNull(index)?.id?.let { onTabClick(it) }
     }
 
-    private suspend fun onTabLongClick(index: Int) {
-        state.updateSelf { copy(dialog = BrowserViewState.Dialogs.CloseBrowser(tabs[index].id)) }
+    private suspend fun onTabClick(id: Int) {
+        if (model.tabsList.none { it.id == id }) return
+        selectTab(model.selectTab(id))
+    }
+
+    private suspend fun onTabLongClick(id: Int) {
+        if (model.tabsList.none { it.id == id }) return
+        state.updateSelf { copy(dialog = BrowserViewState.Dialogs.CloseBrowser(id)) }
     }
 
     private fun <T> List<T>.nextSelected(removedIndex: Int): T? {
@@ -763,21 +769,22 @@ class BrowserPresenter @Inject constructor(
         }
     }
 
-    private suspend fun onTabClose(index: Int) {
-        if (index == -1) {
-            // If the user clicks on close multiple times, the index may be -1 if the view is in the
-            // process of being removed.
-            return
-        }
-        val nextTab = state.value.tabs.nextSelected(index)
+    private suspend fun onTabClose(id: Int) {
+        val tabs = state.value.tabs
+        val index = tabs.indexOfFirst { it.id == id }
+        if (index == -1 || model.tabsList.none { it.id == id }) return
+        val nextTab = tabs.nextSelected(index)
 
         val currentTabId = currentTab?.id
-        val needToSelectNextTab = state.value.tabs[index].id == currentTabId
+        val needToSelectNextTab = id == currentTabId
 
-        model.deleteTab(state.value.tabs[index].id)
+        model.deleteTab(id)
         state.updateSelf { updateTabViewState() }
         if (needToSelectNextTab) {
-            nextTab?.id?.let {
+            val nextTabId = nextTab?.id?.takeIf { nextId ->
+                model.tabsList.any { it.id == nextId }
+            } ?: model.tabsList.firstOrNull()?.id
+            nextTabId?.let {
                 val shouldClose = currentTab?.tabType == TabModel.Type.EPHEMERAL
                 selectTab(model.selectTab(it), focusTab = false)
                 if (shouldClose) {
@@ -833,7 +840,7 @@ class BrowserPresenter @Inject constructor(
                     TabModel.Type.POP_UP
                 )
             ) {
-                onTabClose(state.value.tabs.indexOfCurrentTab())
+                currentTab?.id?.let { onTabClose(it) }
             } else {
                 navigator.backgroundBrowser()
             }
@@ -1395,8 +1402,7 @@ class BrowserPresenter @Inject constructor(
 
     private suspend fun onCloseBrowserEvent(id: Int, closeTabEvent: BrowserContract.CloseTabEvent) {
         when (closeTabEvent) {
-            BrowserContract.CloseTabEvent.CLOSE_CURRENT ->
-                onTabClose(state.value.tabs.tabIndexForId(id))
+            BrowserContract.CloseTabEvent.CLOSE_CURRENT -> onTabClose(id)
 
             BrowserContract.CloseTabEvent.CLOSE_OTHERS -> {
                 val currentTabId = currentTab?.id

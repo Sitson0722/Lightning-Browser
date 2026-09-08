@@ -166,7 +166,7 @@ fun TopTabDesktopNavigationBar(
                 items = browserViewState.tabs,
                 key = { _, item -> item.id },
                 contentType = { _, item -> item.isSelected },
-            ) { index, tab ->
+            ) { _, tab ->
                 Row(
                     modifier = Modifier
                         .width(175.dp)
@@ -176,8 +176,8 @@ fun TopTabDesktopNavigationBar(
                             fadeOutSpec = null
                         )
                         .combinedClickable(
-                            onClick = { presenter.onEvent(BrowserUiEvent.TabClick(index)) },
-                            onLongClick = { presenter.onEvent(BrowserUiEvent.TabLongClick(index)) }
+                            onClick = { presenter.onEvent(BrowserUiEvent.TabClick(tab.id)) },
+                            onLongClick = { presenter.onEvent(BrowserUiEvent.TabLongClick(tab.id)) }
                         )
                         .zIndex(
                             if (tab.isSelected) {
@@ -236,7 +236,7 @@ fun TopTabDesktopNavigationBar(
                     IconButton(
                         modifier = Modifier
                             .size(30.dp),
-                        onClick = { presenter.onEvent(BrowserUiEvent.TabClose(index)) }
+                        onClick = { presenter.onEvent(BrowserUiEvent.TabClose(tab.id)) }
                     ) {
                         Icon(
                             modifier = Modifier.size(20.dp),

@@ -139,7 +139,7 @@ fun DrawerTabs(
                         items = browserViewState.tabs,
                         key = { _, item -> item.id },
                         contentType = { _, item -> item.isSelected },
-                    ) { index, tab ->
+                    ) { _, tab ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -148,10 +148,10 @@ fun DrawerTabs(
                                     fadeOutSpec = null
                                 )
                                 .combinedClickable(
-                                    onClick = { presenter.onEvent(BrowserUiEvent.TabClick(index)) },
+                                    onClick = { presenter.onEvent(BrowserUiEvent.TabClick(tab.id)) },
                                     onLongClick = {
                                         presenter.onEvent(
-                                            BrowserUiEvent.TabLongClick(index)
+                                            BrowserUiEvent.TabLongClick(tab.id)
                                         )
                                     }
                                 )
@@ -204,7 +204,7 @@ fun DrawerTabs(
                                 modifier = Modifier
                                     .size(48.dp)
                                     .padding(4.dp),
-                                onClick = { presenter.onEvent(BrowserUiEvent.TabClose(index)) }
+                                onClick = { presenter.onEvent(BrowserUiEvent.TabClose(tab.id)) }
                             ) {
                                 Icon(
                                     modifier = Modifier.size(20.dp),
