@@ -197,6 +197,7 @@ licensee {
 
     allow(SpdxId.Apache_20)
     allow(SpdxId.BSD_3_Clause)
+    allowUrl("https://github.com/journeyapps/zxing-android-embedded/blob/master/COPYING")
     allowUrl("https://jsoup.org/license")
 }
 
