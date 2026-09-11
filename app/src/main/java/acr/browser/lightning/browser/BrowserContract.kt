@@ -21,6 +21,18 @@ interface BrowserContract {
          * Show the file chooser with the provided [intent].
          */
         fun showFileChooser(intent: Intent)
+
+        /** Open the camera-based QR scanner. */
+        fun showQrScanner()
+
+        /** Open the system picker for an encrypted allowed-sites configuration. */
+        fun showAllowlistImporter()
+
+        /** Ask before merging a verified configuration into the stored list. */
+        fun confirmAllowlistImport(added: Int, existing: Int)
+
+        /** Show non-URL scan content so the user can review and copy it. */
+        fun showScannedText(text: String)
     }
 
     /**

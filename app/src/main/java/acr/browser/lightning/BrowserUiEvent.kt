@@ -320,6 +320,14 @@ sealed interface BrowserUiEvent {
      */
     data class FileChooserResult(val activityResult: ActivityResult) : BrowserUiEvent
 
+    data class QrScanResult(val content: String) : BrowserUiEvent
+
+    data class ImportAllowlistResult(val content: ByteArray?) : BrowserUiEvent
+
+    data class ConfirmAllowlistImport(val allow: Boolean) : BrowserUiEvent
+
+    data class CopyScannedText(val content: String) : BrowserUiEvent
+
     /**
      * Call when a snackbar has been dismissed.
      */

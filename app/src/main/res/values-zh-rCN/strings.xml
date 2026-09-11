@@ -319,4 +319,23 @@
 
     <!-- Search -->
     <string name="search_insert_suggestion">插入搜索建议</string>
+
+    <!-- Allowed sites and QR scanner -->
+    <string name="action_allow_site">允许访问此网站</string>
+    <string name="message_site_allowed">已将 %1$s 添加到可访问网站</string>
+    <string name="message_allow_window_closed">只能在北京时间 22:00 至 23:00 添加网站；12:00 至 13:00 也可自由浏览。</string>
+    <string name="message_allow_invalid_url">请先打开一个网站，再将它加入可访问网站</string>
+    <string name="action_scan_qr">扫一扫</string>
+    <string name="scan_qr_prompt">将二维码放入框内</string>
+    <string name="scan_text_title">扫描到的文本</string>
+    <string name="message_scan_text_copied">已复制扫描到的文本</string>
+    <string name="action_copy_text">复制文本</string>
+    <string name="action_import_allowlist">导入可访问网站</string>
+    <string name="action_import">导入</string>
+    <string name="allowlist_import_title">导入可访问网站？</string>
+    <string name="allowlist_import_confirmation">此配置将新增 %1$d 个网站，另有 %2$d 个已经存在。</string>
+    <string name="message_allowlist_imported">已新增 %1$d 个网站；%2$d 个原已存在</string>
+    <string name="message_allowlist_invalid_file">配置文件已损坏、不受信任或版本不受支持</string>
+    <string name="message_allowlist_read_failed">无法读取所选配置文件</string>
+    <string name="message_allowlist_save_failed">无法保存导入的网站</string>
 </resources>

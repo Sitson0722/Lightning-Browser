@@ -1,6 +1,7 @@
 package acr.browser.lightning.browser
 
 import acr.browser.lightning.BrowserUiEvent
+import acr.browser.lightning.R
 import acr.browser.lightning.ThemableActivity
 import acr.browser.lightning.browser.keys.KeyEventAdapter
 import acr.browser.lightning.browser.search.IntentExtractor
@@ -18,14 +19,18 @@ import android.widget.FrameLayout
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -39,6 +44,32 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
     private val launcher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { presenter.onEvent(BrowserUiEvent.FileChooserResult(it)) }
+
+    private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
+        result.contents?.let { presenter.onEvent(BrowserUiEvent.QrScanResult(it)) }
+    }
+
+    private val allowlistImporter = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri ?: return@registerForActivityResult
+        val bytes = runCatching {
+            contentResolver.openInputStream(uri)?.use { input ->
+                val output = ByteArrayOutputStream()
+                val buffer = ByteArray(8 * 1024)
+                var total = 0
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    check(total <= MAX_ALLOWLIST_FILE_BYTES)
+                    output.write(buffer, 0, read)
+                }
+                output.toByteArray()
+            }
+        }.getOrNull()
+        presenter.onEvent(BrowserUiEvent.ImportAllowlistResult(bytes))
+    }
 
     @Inject
     internal lateinit var keyEventAdapter: KeyEventAdapter
@@ -156,6 +187,48 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
         launcher.launch(intent)
     }
 
+    override fun showQrScanner() {
+        qrScannerLauncher.launch(
+            ScanOptions().apply {
+                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                setPrompt(getString(R.string.scan_qr_prompt))
+                setBeepEnabled(false)
+                setOrientationLocked(false)
+            }
+        )
+    }
+
+    override fun showAllowlistImporter() {
+        allowlistImporter.launch(arrayOf("application/octet-stream", "application/x-lbconfig"))
+    }
+
+    override fun confirmAllowlistImport(added: Int, existing: Int) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.allowlist_import_title)
+            .setMessage(getString(R.string.allowlist_import_confirmation, added, existing))
+            .setNegativeButton(R.string.action_cancel) { _, _ ->
+                presenter.onEvent(BrowserUiEvent.ConfirmAllowlistImport(false))
+            }
+            .setPositiveButton(R.string.action_import) { _, _ ->
+                presenter.onEvent(BrowserUiEvent.ConfirmAllowlistImport(true))
+            }
+            .setOnCancelListener {
+                presenter.onEvent(BrowserUiEvent.ConfirmAllowlistImport(false))
+            }
+            .show()
+    }
+
+    override fun showScannedText(text: String) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.scan_text_title)
+            .setMessage(text.take(MAX_SCANNED_TEXT_LENGTH))
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_copy_text) { _, _ ->
+                presenter.onEvent(BrowserUiEvent.CopyScannedText(text))
+            }
+            .show()
+    }
+
     private fun setFullscreen(enabled: Boolean, immersive: Boolean) {
         WindowCompat.getInsetsController(window, window.decorView).apply {
             if (enabled) {
@@ -171,6 +244,11 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
                 show(WindowInsetsCompat.Type.systemBars())
             }
         }
+    }
+
+    private companion object {
+        const val MAX_ALLOWLIST_FILE_BYTES = 1_048_576
+        const val MAX_SCANNED_TEXT_LENGTH = 4_096
     }
 
     // TODO: Animate color change

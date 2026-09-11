@@ -52,3 +52,6 @@ out
 # https://gitlab.com/fdroid/fdroidclient/raw/master/.gitignore
 
 *.iml
+
+# Local allowlist signing material (must never be pushed)
+/docs/allowlist-signing-private-key.local.md

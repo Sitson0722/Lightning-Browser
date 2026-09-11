@@ -285,4 +285,23 @@
     </plurals>
     <string name="notification_incognito_running_message">點觸以開啟</string>
     <string name="notification_incognito_running_description">正在顯示無痕通知</string>
+
+    <!-- Allowed sites and QR scanner -->
+    <string name="action_allow_site">允許存取此網站</string>
+    <string name="message_site_allowed">已將 %1$s 加入可存取網站</string>
+    <string name="message_allow_window_closed">只能在 UTC+8 的 22:00 至 23:00 加入網站；12:00 至 13:00 也可自由瀏覽。</string>
+    <string name="message_allow_invalid_url">請先開啟網站，再將它加入可存取網站</string>
+    <string name="action_scan_qr">掃描 QR Code</string>
+    <string name="scan_qr_prompt">將 QR Code 放入框內</string>
+    <string name="scan_text_title">掃描到的文字</string>
+    <string name="message_scan_text_copied">已複製掃描到的文字</string>
+    <string name="action_copy_text">複製文字</string>
+    <string name="action_import_allowlist">匯入可存取網站</string>
+    <string name="action_import">匯入</string>
+    <string name="allowlist_import_title">匯入可存取網站？</string>
+    <string name="allowlist_import_confirmation">此設定將新增 %1$d 個網站，另有 %2$d 個已存在。</string>
+    <string name="message_allowlist_imported">已新增 %1$d 個網站；%2$d 個原已存在</string>
+    <string name="message_allowlist_invalid_file">設定檔已損壞、不受信任或版本不受支援</string>
+    <string name="message_allowlist_read_failed">無法讀取所選設定檔</string>
+    <string name="message_allowlist_save_failed">無法儲存匯入的網站</string>
 </resources>

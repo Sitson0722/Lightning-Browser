@@ -111,6 +111,7 @@ class BrowserPresenter @Inject constructor(
     private var currentBookmarks: List<Bookmark> = emptyList()
     private var pendingAction: BrowserContract.Action.LoadUrl? = null
     private var pendingSnackbarAction: EphemeralAction? = null
+    private var pendingAllowlistConfig: ByteArray? = null
     private var isCustomViewShowing = false
 
     private val tabJobs: MutableList<Job> = mutableListOf()
@@ -223,6 +224,14 @@ class BrowserPresenter @Inject constructor(
                 BrowserUiEvent.SnackbarActionPerformed -> onSnackbarActionPerformed()
                 BrowserUiEvent.SnackbarDismissed -> onSnackbarDismissed()
                 is BrowserUiEvent.FileChooserResult -> onFileChooserResult(browserUiEvent.activityResult)
+                is BrowserUiEvent.QrScanResult -> onQrScanResult(browserUiEvent.content)
+                is BrowserUiEvent.ImportAllowlistResult -> onImportAllowlistResult(browserUiEvent.content)
+                is BrowserUiEvent.ConfirmAllowlistImport ->
+                    onConfirmAllowlistImport(browserUiEvent.allow)
+                is BrowserUiEvent.CopyScannedText -> {
+                    navigator.copyPageLink(browserUiEvent.content)
+                    showSnackbar(resourceProvider.stringResource(R.string.message_scan_text_copied))
+                }
                 is BrowserUiEvent.ImageLongPress -> onImageLongPressEvent(
                     browserUiEvent.longPress,
                     browserUiEvent.imageLongPressEvent
@@ -635,6 +644,8 @@ class BrowserPresenter @Inject constructor(
             MenuSelection.ADD_BOOKMARK -> currentTab?.url?.takeIf { !it.isSpecialUrl() }
                 ?.let { showAddBookmarkDialog() }
 
+            MenuSelection.SCAN_QR -> view?.showQrScanner()
+
             MenuSelection.ALLOW_SITE -> {
                 val message = when (val result = siteAccessPolicy.allowUrl(currentTab?.url.orEmpty())) {
                     is SiteAccessPolicy.AddResult.Added -> resourceProvider.stringResource(
@@ -650,6 +661,8 @@ class BrowserPresenter @Inject constructor(
                 }
                 showSnackbar(message)
             }
+
+            MenuSelection.IMPORT_ALLOWLIST -> view?.showAllowlistImporter()
 
             MenuSelection.SETTINGS -> navigator.openSettings()
             MenuSelection.BACK -> onBackClick()
@@ -1505,6 +1518,50 @@ class BrowserPresenter @Inject constructor(
 
     private fun onFileChooserResult(activityResult: ActivityResult) {
         currentTab?.handleFileChooserResult(activityResult)
+    }
+
+    private suspend fun onQrScanResult(content: String) {
+        val value = content.trim()
+        val uri = value.toUri()
+        if ((uri.scheme == "http" || uri.scheme == "https") && !uri.host.isNullOrBlank()) {
+            onNewAction(BrowserContract.Action.LoadUrl(value))
+        } else {
+            view?.showScannedText(content)
+        }
+    }
+
+    private suspend fun onImportAllowlistResult(content: ByteArray?) {
+        if (content == null) {
+            showSnackbar(resourceProvider.stringResource(R.string.message_allowlist_read_failed))
+            return
+        }
+        when (val result = siteAccessPolicy.inspectConfig(content)) {
+            is SiteAccessPolicy.ImportResult.Ready -> {
+                pendingAllowlistConfig = content
+                view?.confirmAllowlistImport(result.added, result.existing)
+            }
+            SiteAccessPolicy.ImportResult.InvalidFile ->
+                showSnackbar(resourceProvider.stringResource(R.string.message_allowlist_invalid_file))
+            SiteAccessPolicy.ImportResult.SaveFailed -> Unit
+        }
+    }
+
+    private suspend fun onConfirmAllowlistImport(allow: Boolean) {
+        val content = pendingAllowlistConfig
+        pendingAllowlistConfig = null
+        if (!allow || content == null) return
+        val message = when (val result = siteAccessPolicy.importConfig(content)) {
+            is SiteAccessPolicy.ImportResult.Ready -> resourceProvider.stringResource(
+                R.string.message_allowlist_imported,
+                result.added,
+                result.existing
+            )
+            SiteAccessPolicy.ImportResult.InvalidFile ->
+                resourceProvider.stringResource(R.string.message_allowlist_invalid_file)
+            SiteAccessPolicy.ImportResult.SaveFailed ->
+                resourceProvider.stringResource(R.string.message_allowlist_save_failed)
+        }
+        showSnackbar(message)
     }
 
     private suspend fun onSnackbarDismissed() {

@@ -66,6 +66,28 @@ class SiteAccessPolicyTest {
     }
 
     @Test
+    fun `signed configuration can be imported outside editing window`() {
+        val result = policy.importConfig(validAllowlistConfig())
+        val closedClock = clockAt("2026-01-01T16:00:00Z")
+
+        assertThat(result).isEqualTo(SiteAccessPolicy.ImportResult.Ready(2, 0))
+        assertThat(policy.isUrlAllowed("https://news.example.com", closedClock)).isTrue()
+        assertThat(policy.isUrlAllowed("https://school.edu.cn", closedClock)).isTrue()
+    }
+
+    @Test
+    fun `invalid configuration does not change allowed sites`() {
+        val file = validAllowlistConfig().also {
+            it[25] = (it[25].toInt() xor 1).toByte()
+        }
+
+        assertThat(policy.importConfig(file)).isEqualTo(SiteAccessPolicy.ImportResult.InvalidFile)
+        assertThat(
+            policy.isUrlAllowed("https://example.com", clockAt("2026-01-01T16:00:00Z"))
+        ).isFalse()
+    }
+
+    @Test
     fun `unsaved sites are allowed during midday browsing window`() {
         assertThat(
             policy.isUrlAllowed("https://unsaved.example", clockAt("2026-01-01T04:30:00Z"))

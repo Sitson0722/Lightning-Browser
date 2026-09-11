@@ -2,6 +2,7 @@ package acr.browser.lightning.browser.access
 
 import android.app.Application
 import android.net.Uri
+import java.net.IDN
 import java.time.Clock
 import java.time.LocalTime
 import java.time.ZoneOffset
@@ -49,6 +50,32 @@ class SiteAccessPolicy @Inject constructor(
         return AddResult.Added(host.removePrefix("www."))
     }
 
+    fun inspectConfig(file: ByteArray): ImportResult {
+        val imported = decodeDomains(file) ?: return ImportResult.InvalidFile
+        val existing = allowedDomains()
+        val added = imported - existing
+        return ImportResult.Ready(added = added.size, existing = imported.size - added.size)
+    }
+
+    /** Imports a signed configuration at any time and merges it with the existing domains. */
+    fun importConfig(file: ByteArray): ImportResult {
+        val imported = decodeDomains(file) ?: return ImportResult.InvalidFile
+        val existing = allowedDomains()
+        val added = imported - existing
+        val saved = preferences.edit().putStringSet(ALLOWED_DOMAINS, existing + imported).commit()
+        return if (saved) {
+            ImportResult.Ready(added = added.size, existing = imported.size - added.size)
+        } else {
+            ImportResult.SaveFailed
+        }
+    }
+
+    private fun decodeDomains(file: ByteArray): Set<String>? = try {
+        AllowlistConfigCodec.decode(file).map(::normalizedDomain).toSet().takeIf { it.isNotEmpty() }
+    } catch (_: Exception) {
+        null
+    }
+
     fun blockedPageHtml(url: String): String {
         val host = normalizedHost(url).orEmpty().escapeHtml()
         return """
@@ -83,6 +110,21 @@ class SiteAccessPolicy @Inject constructor(
         return uri.host?.lowercase()?.trimEnd('.')?.takeIf(String::isNotBlank)
     }
 
+    private fun normalizedDomain(value: String): String {
+        if (value != value.trim() || value.any { it == '/' || it == ':' || it.isWhitespace() }) {
+            throw IllegalArgumentException("Domain contains invalid characters")
+        }
+        val ascii = IDN.toASCII(value.trimEnd('.'), IDN.USE_STD3_ASCII_RULES)
+            .lowercase()
+            .removePrefix("www.")
+        require(ascii.isNotBlank() && ascii.length <= 253 && '.' in ascii)
+        require(ascii.split('.').all { label ->
+            label.isNotEmpty() && label.length <= 63 &&
+                label.first() != '-' && label.last() != '-'
+        })
+        return ascii
+    }
+
     /**
      * Identifies direct links to common downloadable file types. These links are always allowed so
      * WebView can hand them to its download listener, even when their host is not allow-listed.
@@ -101,6 +143,12 @@ class SiteAccessPolicy @Inject constructor(
         data class Added(val domain: String) : AddResult
         data object WindowClosed : AddResult
         data object InvalidUrl : AddResult
+    }
+
+    sealed interface ImportResult {
+        data class Ready(val added: Int, val existing: Int) : ImportResult
+        data object InvalidFile : ImportResult
+        data object SaveFailed : ImportResult
     }
 
     private fun String.escapeHtml(): String =

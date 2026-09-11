@@ -128,11 +128,27 @@ fun BrowserOverflowMenu(presenter: BrowserPresenter, browserViewState: BrowserCo
                     }
                 )
             }
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.action_scan_qr)) },
+                onClick = {
+                    presenter.onEvent(BrowserUiEvent.MenuClick(MenuSelection.SCAN_QR))
+                    dropDownExpanded = false
+                }
+            )
             if (browserViewState.enableFullMenu) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.action_allow_site)) },
                     onClick = {
                         presenter.onEvent(BrowserUiEvent.MenuClick(MenuSelection.ALLOW_SITE))
+                        dropDownExpanded = false
+                    }
+                )
+            }
+            if (!browserViewState.isIncognito) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_import_allowlist)) },
+                    onClick = {
+                        presenter.onEvent(BrowserUiEvent.MenuClick(MenuSelection.IMPORT_ALLOWLIST))
                         dropDownExpanded = false
                     }
                 )

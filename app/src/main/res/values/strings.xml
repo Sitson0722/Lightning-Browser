@@ -365,4 +365,17 @@
     <string name="message_site_allowed">%1$s added to allowed sites</string>
     <string name="message_allow_window_closed">Sites can only be added from 22:00 to 23:00 (UTC+8). Browsing is also unrestricted from 12:00 to 13:00.</string>
     <string name="message_allow_invalid_url">Open a website before adding it to allowed sites</string>
+    <string name="action_scan_qr">Scan QR code</string>
+    <string name="scan_qr_prompt">Place a QR code inside the frame</string>
+    <string name="scan_text_title">Scanned text</string>
+    <string name="message_scan_text_copied">Scanned text copied</string>
+    <string name="action_copy_text">Copy text</string>
+    <string name="action_import_allowlist">Import allowed sites</string>
+    <string name="action_import">Import</string>
+    <string name="allowlist_import_title">Import allowed sites?</string>
+    <string name="allowlist_import_confirmation">This configuration adds %1$d new sites; %2$d already exist.</string>
+    <string name="message_allowlist_imported">Imported %1$d new sites; %2$d already existed</string>
+    <string name="message_allowlist_invalid_file">The configuration is damaged, untrusted, or unsupported</string>
+    <string name="message_allowlist_read_failed">Could not read the selected configuration</string>
+    <string name="message_allowlist_save_failed">Could not save the imported sites</string>
 </resources>
