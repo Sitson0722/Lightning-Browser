@@ -88,6 +88,10 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     buildTypes {
         named("debug") {
             multiDexEnabled = true

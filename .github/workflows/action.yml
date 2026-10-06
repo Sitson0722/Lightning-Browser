@@ -38,6 +38,14 @@ jobs:
             echo "::error title=Gradle build failed::$summary"
           fi
           exit "$build_status"
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lightning-browser-test-results-${{ github.sha }}
+          path: app/build/test-results/**/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Check
         run: ./gradlew checkSortDependencies
       - name: Verify blacklist in APKs
