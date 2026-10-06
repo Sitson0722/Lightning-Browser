@@ -3,6 +3,8 @@ package acr.browser.lightning.browser.access
 import acr.browser.lightning.SDK_VERSION
 import acr.browser.lightning.TestApplication
 import android.app.Application
+import android.net.Uri
+import android.webkit.WebResourceRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.Before
 import org.junit.Test
@@ -90,6 +92,33 @@ class SiteAccessPolicyTest {
         assertThat(policy.isUrlAllowed("file:///internal/homepage.html")).isTrue()
         assertThat(policy.isUrlAllowed("data:text/html,hello")).isTrue()
     }
+
+    @Test
+    fun `main frame request gets a forbidden page including redirected and POST requests`() {
+        val response = policy.interceptRequest(request("https://reddit.com", mainFrame = true))!!
+        assertThat(response.statusCode).isEqualTo(403)
+        assertThat(response.mimeType).isEqualTo("text/html")
+        assertThat(response.responseHeaders).containsEntry("Cache-Control", "no-store")
+        assertThat(response.data.bufferedReader().readText()).contains("Site blocked")
+    }
+
+    @Test
+    fun `subresources frames and workers get an empty forbidden response`() {
+        val response = policy.interceptRequest(request("https://old.reddit.com/resource"))!!
+        assertThat(response.statusCode).isEqualTo(403)
+        assertThat(response.data.read()).isEqualTo(-1)
+        assertThat(policy.interceptRequest(request("https://example.org/resource"))).isNull()
+    }
+
+    private fun request(url: String, mainFrame: Boolean = false): WebResourceRequest =
+        object : WebResourceRequest {
+            override fun getUrl(): Uri = Uri.parse(url)
+            override fun isForMainFrame(): Boolean = mainFrame
+            override fun isRedirect(): Boolean = true
+            override fun hasGesture(): Boolean = false
+            override fun getMethod(): String = "POST"
+            override fun getRequestHeaders(): Map<String, String> = emptyMap()
+        }
 
     @Test
     fun `blocked page explains the fixed blacklist and escapes host markup`() {

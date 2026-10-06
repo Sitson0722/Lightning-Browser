@@ -53,7 +53,7 @@ abstract class GenerateBlacklistAssets : DefaultTask() {
 }
 
 val generateBlacklistAssets = tasks.register<GenerateBlacklistAssets>("generateBlacklistAssets") {
-    blacklistFile.set(rootProject.layout.projectDirectory.file("Distractions websites.txt"))
+    blacklistFile.set(layout.settingsDirectory.file("Distractions websites.txt"))
     outputDirectory.set(layout.buildDirectory.dir("generated/blacklistAssets"))
 }
 

@@ -17,7 +17,6 @@ import acr.browser.lightning.utils.ThreadSafeFileProvider
 import acr.browser.lightning.utils.isSpecialUrl
 import android.annotation.SuppressLint
 import android.graphics.Bitmap
-import android.net.Uri
 import android.net.http.SslError
 import android.os.Message
 import android.view.LayoutInflater
@@ -37,7 +36,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.io.ByteArrayInputStream
 import kotlin.math.abs
 
 /**
@@ -324,21 +322,7 @@ class TabWebViewClient @AssistedInject constructor(
         view: WebView,
         request: WebResourceRequest
     ): WebResourceResponse? {
-        if (!siteAccessPolicy.isUrlAllowed(request.url.toString())) {
-            val content = if (request.isForMainFrame) {
-                siteAccessPolicy.blockedPageHtml(request.url.toString()).toByteArray(Charsets.UTF_8)
-            } else {
-                byteArrayOf()
-            }
-            return WebResourceResponse(
-                if (request.isForMainFrame) BLOCKED_PAGE_MIME_TYPE else BLOCKED_RESPONSE_MIME_TYPE,
-                BLOCKED_RESPONSE_ENCODING,
-                403,
-                "Forbidden",
-                mapOf("Cache-Control" to "no-store"),
-                ByteArrayInputStream(content)
-            )
-        }
+        siteAccessPolicy.interceptRequest(request)?.let { return it }
         return if (request.url.path?.startsWith(files.path) == true) {
             filesStoragePathHandler.handle(request.url.path!!.substring(files.path.length))
         } else if (request.url.path?.startsWith(cache.path) == true) {
@@ -376,7 +360,6 @@ class TabWebViewClient @AssistedInject constructor(
     companion object {
         private const val TAG = "TabWebViewClient"
 
-        private const val BLOCKED_RESPONSE_MIME_TYPE = "text/plain"
         private const val BLOCKED_PAGE_MIME_TYPE = "text/html"
         private const val BLOCKED_RESPONSE_ENCODING = "utf-8"
     }

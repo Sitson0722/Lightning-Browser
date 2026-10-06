@@ -39,7 +39,7 @@ news.example.org
 
 请填写域名，不要写协议、端口、路径或通配符。支持国际化域名，匹配时忽略大小写和
 末尾点号；`example.com` 不会匹配 `otherexample.com`。空名单允许全部网站。
-HTTP(S) 页面、内嵌页面和资源请求均使用同一名单；黑名单域名的下载链接也不会因
+HTTP(S) 页面、内嵌页面、资源及 Service Worker 请求均使用同一名单；黑名单域名的下载链接也不会因
 文件扩展名而放行。浏览器内部页面仍可访问。未列出的域名正常访问，不使用旧广告 hosts。
 
 推送到 `main`、向 `main` 提交 PR，或手动运行 GitHub Actions 的 **Build** workflow：

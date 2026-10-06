@@ -2,6 +2,9 @@ package acr.browser.lightning.browser.access
 
 import android.app.Application
 import android.net.Uri
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import java.io.ByteArrayInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,6 +23,25 @@ class SiteAccessPolicy internal constructor(private val blacklist: DomainBlackli
             !uri.scheme.equals("https", ignoreCase = true)
         ) return true
         return !blacklist.blocksHost(uri.host.orEmpty())
+    }
+
+    /** The same response policy is used for WebView and service worker requests. */
+    fun interceptRequest(request: WebResourceRequest): WebResourceResponse? {
+        val url = request.url.toString()
+        if (isUrlAllowed(url)) return null
+        val content = if (request.isForMainFrame) {
+            blockedPageHtml(url).toByteArray(Charsets.UTF_8)
+        } else {
+            byteArrayOf()
+        }
+        return WebResourceResponse(
+            if (request.isForMainFrame) "text/html" else "text/plain",
+            "utf-8",
+            403,
+            "Forbidden",
+            mapOf("Cache-Control" to "no-store"),
+            ByteArrayInputStream(content)
+        )
     }
 
     fun blockedPageHtml(url: String): String {
