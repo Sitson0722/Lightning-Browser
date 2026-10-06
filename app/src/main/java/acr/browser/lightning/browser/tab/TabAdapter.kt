@@ -212,7 +212,9 @@ class TabAdapter @AssistedInject constructor(
     }
 
     override fun loadUrl(url: String) {
-        webView.loadUrl(url, requestHeaders)
+        if (!tabWebViewClient.blockNavigation(webView, url)) {
+            webView.loadUrl(url, requestHeaders)
+        }
     }
 
     override fun loadFromInitializer(tabInitializer: TabInitializer) {

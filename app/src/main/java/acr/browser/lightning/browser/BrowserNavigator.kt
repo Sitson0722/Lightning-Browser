@@ -1,12 +1,15 @@
 package acr.browser.lightning.browser
 
 import acr.browser.lightning.IncognitoBrowserActivity
+import acr.browser.lightning.R
+import acr.browser.lightning.browser.access.SiteAccessPolicy
 import acr.browser.lightning.browser.cleanup.ExitCleanup
 import acr.browser.lightning.concurrency.AppCoroutineScope
 import acr.browser.lightning.di.IncognitoMode
 import acr.browser.lightning.download.FileDownloader
 import acr.browser.lightning.download.PendingDownload
 import acr.browser.lightning.extensions.copyToClipboard
+import acr.browser.lightning.extensions.toast
 import acr.browser.lightning.log.Logger
 import acr.browser.lightning.settings.activity.SettingsActivity
 import acr.browser.lightning.shortcuts.ShortcutGenerator
@@ -31,6 +34,7 @@ class BrowserNavigator @Inject constructor(
     private val activityManager: ActivityManager,
     private val appCoroutineScope: AppCoroutineScope,
     private val fileDownloader: FileDownloader,
+    private val siteAccessPolicy: SiteAccessPolicy,
     private val intentUtils: IntentUtils,
     private val shortcutGenerator: ShortcutGenerator,
 ) : BrowserContract.Navigator {
@@ -64,6 +68,10 @@ class BrowserNavigator @Inject constructor(
     }
 
     override fun download(pendingDownload: PendingDownload) {
+        if (!siteAccessPolicy.isUrlAllowed(pendingDownload.url)) {
+            activity.toast(R.string.message_blacklisted_site)
+            return
+        }
         appCoroutineScope.launch {
             fileDownloader.download(pendingDownload)
         }

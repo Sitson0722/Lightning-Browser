@@ -153,18 +153,8 @@ data class BrowserViewState(
         data class SslInfo(val sslDialog: SslCertificateInfo) : Dialogs
         data class CloseBrowser(val selectedTab: Int) : Dialogs
 
-        /**
-         * Show the tools dialog that allows the user to toggle ad blocking and user agent for the
-         * current page.
-         *
-         * @param areAdsAllowed True if ads are currently allowed on the page, false otherwise.
-         * @param shouldShowAdBlockOption True if ad block toggling is available for the current
-         * page.
-         */
-        data class PageTools(
-            val areAdsAllowed: Boolean,
-            val shouldShowAdBlockOption: Boolean
-        ) : Dialogs
+        /** Show the desktop user agent option for the current page. */
+        data object PageTools : Dialogs
 
         data object LocalFileBlocked : Dialogs
     }

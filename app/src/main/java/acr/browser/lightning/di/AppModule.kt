@@ -1,9 +1,6 @@
 package acr.browser.lightning.di
 
 import acr.browser.lightning.AppTheme
-import acr.browser.lightning.adblock.AdBlocker
-import acr.browser.lightning.adblock.BloomFilterAdBlocker
-import acr.browser.lightning.adblock.NoOpAdBlocker
 import acr.browser.lightning.browser.ui.TabConfiguration
 import acr.browser.lightning.concurrency.AppCoroutineScope
 import acr.browser.lightning.concurrency.CoroutineDispatcherProvider
@@ -70,7 +67,6 @@ import java.net.InetSocketAddress
 import java.net.Proxy
 import java.util.Locale
 import javax.inject.Named
-import javax.inject.Provider
 import javax.inject.Qualifier
 import javax.inject.Singleton
 import kotlin.time.Duration
@@ -392,21 +388,6 @@ class AppModule {
         .combine(userPreferencesDataStore.tabConfiguration.values()) { a, b ->
             a || b == TabConfiguration.DESKTOP
         }.stateIn(appCoroutineScope, SharingStarted.Eagerly, null)
-
-    @Singleton
-    @Provides
-    fun providesAdBlocker(
-        appCoroutineScope: AppCoroutineScope,
-        userPreferencesDataStore: UserPreferencesDataStore,
-        bloomFilterAdBlocker: Provider<BloomFilterAdBlocker>,
-        noOpAdBlocker: NoOpAdBlocker
-    ): Deferred<AdBlocker> = appCoroutineScope.async {
-        if (userPreferencesDataStore.adBlockEnabled.get()) {
-            bloomFilterAdBlocker.get()
-        } else {
-            noOpAdBlocker
-        }
-    }
 }
 
 @Qualifier

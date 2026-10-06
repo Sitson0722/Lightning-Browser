@@ -1,8 +1,6 @@
 package acr.browser.lightning.browser.tab
 
 import acr.browser.lightning.R
-import acr.browser.lightning.adblock.AdBlocker
-import acr.browser.lightning.adblock.allowlist.AllowListModel
 import acr.browser.lightning.browser.access.SiteAccessPolicy
 import acr.browser.lightning.browser.tab.settings.TabSettings
 import acr.browser.lightning.concurrency.TabCoroutineScope
@@ -35,7 +33,6 @@ import androidx.webkit.WebViewAssetLoader.InternalStoragePathHandler
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -47,8 +44,6 @@ import kotlin.math.abs
  * A [WebViewClient] that supports the tab adaptation.
  */
 class TabWebViewClient @AssistedInject constructor(
-    private val adBlocker: Deferred<@JvmSuppressWildcards AdBlocker>,
-    private val allowListModel: AllowListModel,
     private val siteAccessPolicy: SiteAccessPolicy,
     private val urlHandler: UrlHandler,
     @Assisted private val headers: Map<String, String>,
@@ -135,16 +130,28 @@ class TabWebViewClient @AssistedInject constructor(
      */
     var searchQuerySelection: Pair<Int, Int> = Pair(0, 0)
 
-    private var currentUrl: String = ""
     private var isReflowRunning: Boolean = false
     private var zoomScale: Float = 0.0F
     private var urlWithSslError: String? = null
 
-    private fun shouldBlockRequest(pageUrl: String, requestUri: Uri) =
-        !allowListModel.isUrlAllowedAds(pageUrl) &&
-            runBlocking { adBlocker.await().isAd(requestUri) }
+    /** Checks programmatic loads as well as navigations initiated by WebView. */
+    fun blockNavigation(view: WebView, url: String): Boolean {
+        if (siteAccessPolicy.isUrlAllowed(url)) return false
+        view.stopLoading()
+        view.loadDataWithBaseURL(
+            null,
+            siteAccessPolicy.blockedPageHtml(url),
+            BLOCKED_PAGE_MIME_TYPE,
+            BLOCKED_RESPONSE_ENCODING,
+            null
+        )
+        return true
+    }
 
     override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+        // WebView does not report every redirect to shouldInterceptRequest. Also check the
+        // final main-frame URL, including redirects and restored history entries.
+        if (blockNavigation(view, url)) return
         super.onPageStarted(view, url, favicon)
         searchQuery = if (!url.isSpecialUrl()) {
             url
@@ -152,7 +159,6 @@ class TabWebViewClient @AssistedInject constructor(
             ""
         }
         searchQuerySelection = Pair(0, searchQuery.length)
-        currentUrl = url
         tabCoroutineScope.launch {
             startedSharedFlow.emit(Unit)
             urlSharedFlow.emit(url)
@@ -302,14 +308,8 @@ class TabWebViewClient @AssistedInject constructor(
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url.toString()
-        if (request.isForMainFrame && !siteAccessPolicy.isUrlAllowed(url)) {
-            view.loadDataWithBaseURL(
-                null,
-                siteAccessPolicy.blockedPageHtml(url),
-                BLOCKED_PAGE_MIME_TYPE,
-                BLOCKED_RESPONSE_ENCODING,
-                null
-            )
+        if (!siteAccessPolicy.isUrlAllowed(url)) {
+            if (request.isForMainFrame) blockNavigation(view, url)
             return true
         }
         return urlHandler.shouldOverrideLoading(
@@ -324,18 +324,20 @@ class TabWebViewClient @AssistedInject constructor(
         view: WebView,
         request: WebResourceRequest
     ): WebResourceResponse? {
-        if (request.isForMainFrame && !siteAccessPolicy.isUrlAllowed(request.url.toString())) {
+        if (!siteAccessPolicy.isUrlAllowed(request.url.toString())) {
+            val content = if (request.isForMainFrame) {
+                siteAccessPolicy.blockedPageHtml(request.url.toString()).toByteArray(Charsets.UTF_8)
+            } else {
+                byteArrayOf()
+            }
             return WebResourceResponse(
-                BLOCKED_PAGE_MIME_TYPE,
+                if (request.isForMainFrame) BLOCKED_PAGE_MIME_TYPE else BLOCKED_RESPONSE_MIME_TYPE,
                 BLOCKED_RESPONSE_ENCODING,
-                ByteArrayInputStream(
-                    siteAccessPolicy.blockedPageHtml(request.url.toString()).toByteArray()
-                )
+                403,
+                "Forbidden",
+                mapOf("Cache-Control" to "no-store"),
+                ByteArrayInputStream(content)
             )
-        }
-        if (shouldBlockRequest(currentUrl, request.url)) {
-            val empty = ByteArrayInputStream(emptyResponseByteArray)
-            return WebResourceResponse(BLOCKED_RESPONSE_MIME_TYPE, BLOCKED_RESPONSE_ENCODING, empty)
         }
         return if (request.url.path?.startsWith(files.path) == true) {
             filesStoragePathHandler.handle(request.url.path!!.substring(files.path.length))
@@ -373,8 +375,6 @@ class TabWebViewClient @AssistedInject constructor(
 
     companion object {
         private const val TAG = "TabWebViewClient"
-
-        private val emptyResponseByteArray: ByteArray = byteArrayOf()
 
         private const val BLOCKED_RESPONSE_MIME_TYPE = "text/plain"
         private const val BLOCKED_PAGE_MIME_TYPE = "text/html"

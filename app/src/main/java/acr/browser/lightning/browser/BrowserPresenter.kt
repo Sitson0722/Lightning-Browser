@@ -2,9 +2,7 @@ package acr.browser.lightning.browser
 
 import acr.browser.lightning.BrowserUiEvent
 import acr.browser.lightning.R
-import acr.browser.lightning.adblock.allowlist.AllowListModel
 import acr.browser.lightning.browser.history.HistoryRecord
-import acr.browser.lightning.browser.access.SiteAccessPolicy
 import acr.browser.lightning.browser.keys.KeyCombo
 import acr.browser.lightning.browser.menu.MenuSelection
 import acr.browser.lightning.browser.notification.TabCountNotifier
@@ -89,8 +87,6 @@ class BrowserPresenter @Inject constructor(
     private val searchBoxModel: SearchBoxModel,
     private val searchEngineProvider: SearchEngineProvider,
     private val historyPageFactory: HistoryPageFactory,
-    private val allowListModel: AllowListModel,
-    private val siteAccessPolicy: SiteAccessPolicy,
     private val tabCountNotifier: TabCountNotifier,
     @IncognitoMode private val incognitoMode: Boolean,
     coroutineDispatchers: CoroutineDispatchers,
@@ -111,7 +107,6 @@ class BrowserPresenter @Inject constructor(
     private var currentBookmarks: List<Bookmark> = emptyList()
     private var pendingAction: BrowserContract.Action.LoadUrl? = null
     private var pendingSnackbarAction: EphemeralAction? = null
-    private var pendingAllowlistConfig: ByteArray? = null
     private var isCustomViewShowing = false
 
     private val tabJobs: MutableList<Job> = mutableListOf()
@@ -225,9 +220,6 @@ class BrowserPresenter @Inject constructor(
                 BrowserUiEvent.SnackbarDismissed -> onSnackbarDismissed()
                 is BrowserUiEvent.FileChooserResult -> onFileChooserResult(browserUiEvent.activityResult)
                 is BrowserUiEvent.QrScanResult -> onQrScanResult(browserUiEvent.content)
-                is BrowserUiEvent.ImportAllowlistResult -> onImportAllowlistResult(browserUiEvent.content)
-                is BrowserUiEvent.ConfirmAllowlistImport ->
-                    onConfirmAllowlistImport(browserUiEvent.allow)
                 is BrowserUiEvent.CopyScannedText -> {
                     navigator.copyPageLink(browserUiEvent.content)
                     showSnackbar(resourceProvider.stringResource(R.string.message_scan_text_copied))
@@ -292,7 +284,6 @@ class BrowserPresenter @Inject constructor(
                 )
 
                 BrowserUiEvent.StarClick -> onStarClick()
-                BrowserUiEvent.ToggleAdBlockingClick -> onToggleAdBlocking()
                 BrowserUiEvent.ToggleDesktopAgentClick -> onToggleDesktopAgent()
                 BrowserUiEvent.ToolsClick -> onToolsClick()
                 is BrowserUiEvent.BookmarkLongClick -> onBookmarkLongClick(browserUiEvent.index)
@@ -645,24 +636,6 @@ class BrowserPresenter @Inject constructor(
                 ?.let { showAddBookmarkDialog() }
 
             MenuSelection.SCAN_QR -> view?.showQrScanner()
-
-            MenuSelection.ALLOW_SITE -> {
-                val message = when (val result = siteAccessPolicy.allowUrl(currentTab?.url.orEmpty())) {
-                    is SiteAccessPolicy.AddResult.Added -> resourceProvider.stringResource(
-                        R.string.message_site_allowed,
-                        result.domain
-                    )
-                    SiteAccessPolicy.AddResult.WindowClosed -> resourceProvider.stringResource(
-                        R.string.message_allow_window_closed
-                    )
-                    SiteAccessPolicy.AddResult.InvalidUrl -> resourceProvider.stringResource(
-                        R.string.message_allow_invalid_url
-                    )
-                }
-                showSnackbar(message)
-            }
-
-            MenuSelection.IMPORT_ALLOWLIST -> view?.showAllowlistImporter()
 
             MenuSelection.SETTINGS -> navigator.openSettings()
             MenuSelection.BACK -> onBackClick()
@@ -1060,31 +1033,12 @@ class BrowserPresenter @Inject constructor(
     }
 
     private suspend fun onToolsClick() {
-        val currentUrl = currentTab?.url ?: return
-        state.updateSelf {
-            copy(
-                dialog = BrowserViewState.Dialogs.PageTools(
-                    areAdsAllowed = allowListModel.isUrlAllowedAds(currentUrl),
-                    shouldShowAdBlockOption = !currentUrl.isSpecialUrl()
-                )
-            )
-        }
+        state.updateSelf { copy(dialog = BrowserViewState.Dialogs.PageTools) }
     }
 
     private suspend fun onToggleDesktopAgent() {
         onDialogDismissed()
         currentTab?.toggleDesktopAgent()
-        currentTab?.reload()
-    }
-
-    private suspend fun onToggleAdBlocking() {
-        onDialogDismissed()
-        val currentUrl = currentTab?.url ?: return
-        if (allowListModel.isUrlAllowedAds(currentUrl)) {
-            allowListModel.removeUrlFromAllowList(currentUrl)
-        } else {
-            allowListModel.addUrlToAllowList(currentUrl)
-        }
         currentTab?.reload()
     }
 
@@ -1528,40 +1482,6 @@ class BrowserPresenter @Inject constructor(
         } else {
             view?.showScannedText(content)
         }
-    }
-
-    private suspend fun onImportAllowlistResult(content: ByteArray?) {
-        if (content == null) {
-            showSnackbar(resourceProvider.stringResource(R.string.message_allowlist_read_failed))
-            return
-        }
-        when (val result = siteAccessPolicy.inspectConfig(content)) {
-            is SiteAccessPolicy.ImportResult.Ready -> {
-                pendingAllowlistConfig = content
-                view?.confirmAllowlistImport(result.added, result.existing)
-            }
-            SiteAccessPolicy.ImportResult.InvalidFile ->
-                showSnackbar(resourceProvider.stringResource(R.string.message_allowlist_invalid_file))
-            SiteAccessPolicy.ImportResult.SaveFailed -> Unit
-        }
-    }
-
-    private suspend fun onConfirmAllowlistImport(allow: Boolean) {
-        val content = pendingAllowlistConfig
-        pendingAllowlistConfig = null
-        if (!allow || content == null) return
-        val message = when (val result = siteAccessPolicy.importConfig(content)) {
-            is SiteAccessPolicy.ImportResult.Ready -> resourceProvider.stringResource(
-                R.string.message_allowlist_imported,
-                result.added,
-                result.existing
-            )
-            SiteAccessPolicy.ImportResult.InvalidFile ->
-                resourceProvider.stringResource(R.string.message_allowlist_invalid_file)
-            SiteAccessPolicy.ImportResult.SaveFailed ->
-                resourceProvider.stringResource(R.string.message_allowlist_save_failed)
-        }
-        showSnackbar(message)
     }
 
     private suspend fun onSnackbarDismissed() {

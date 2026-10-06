@@ -30,7 +30,6 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
-import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 import javax.inject.Named
 
@@ -47,28 +46,6 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
 
     private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
         result.contents?.let { presenter.onEvent(BrowserUiEvent.QrScanResult(it)) }
-    }
-
-    private val allowlistImporter = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri ?: return@registerForActivityResult
-        val bytes = runCatching {
-            contentResolver.openInputStream(uri)?.use { input ->
-                val output = ByteArrayOutputStream()
-                val buffer = ByteArray(8 * 1024)
-                var total = 0
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    total += read
-                    check(total <= MAX_ALLOWLIST_FILE_BYTES)
-                    output.write(buffer, 0, read)
-                }
-                output.toByteArray()
-            }
-        }.getOrNull()
-        presenter.onEvent(BrowserUiEvent.ImportAllowlistResult(bytes))
     }
 
     @Inject
@@ -198,26 +175,6 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
         )
     }
 
-    override fun showAllowlistImporter() {
-        allowlistImporter.launch(arrayOf("application/octet-stream", "application/x-lbconfig"))
-    }
-
-    override fun confirmAllowlistImport(added: Int, existing: Int) {
-        AlertDialog.Builder(this)
-            .setTitle(R.string.allowlist_import_title)
-            .setMessage(getString(R.string.allowlist_import_confirmation, added, existing))
-            .setNegativeButton(R.string.action_cancel) { _, _ ->
-                presenter.onEvent(BrowserUiEvent.ConfirmAllowlistImport(false))
-            }
-            .setPositiveButton(R.string.action_import) { _, _ ->
-                presenter.onEvent(BrowserUiEvent.ConfirmAllowlistImport(true))
-            }
-            .setOnCancelListener {
-                presenter.onEvent(BrowserUiEvent.ConfirmAllowlistImport(false))
-            }
-            .show()
-    }
-
     override fun showScannedText(text: String) {
         AlertDialog.Builder(this)
             .setTitle(R.string.scan_text_title)
@@ -247,7 +204,6 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
     }
 
     private companion object {
-        const val MAX_ALLOWLIST_FILE_BYTES = 1_048_576
         const val MAX_SCANNED_TEXT_LENGTH = 4_096
     }
 
