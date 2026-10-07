@@ -96,7 +96,7 @@
 7. 缩略图按覆盖目标矩形等比缩放，顶部对齐、水平居中裁剪，处理未指定维度及放大情况，并更改缓存键。只回收新建的中间位图，不回收输入或输出。
 8. TabPager 在移除当前页面前检查目标是否存在，迁移旧父容器后再挂载。Repository 只在显示成功后更新选中标签；失效选择请求保持现有页面，重复删除不抛异常。
 9. 底部标签面板用带目标状态 key 的副作用控制挂载和隐藏，取消过时的隐藏动作，交由 ModalBottomSheet 在布局锚点就绪后显示。三种布局滚动前检查索引。
-10. 普通浏览器全屏方向/系统栏更新移入 LaunchedEffect，避免每次重组重复操作。无痕退出改按当前 taskId 找任务并提供 fallback，避免新增子页面后 topActivity 变化导致 first() 抛异常。
+10. 普通浏览器全屏方向/系统栏更新移入 LaunchedEffect，避免每次重组重复操作。无痕退出直接调用 Activity.finishAndRemoveTask() 结束当前任务，避免新增子页面后 topActivity 变化导致 first() 抛异常，也兼容最低 API 28。
 
 ### 补充的验证材料
 
@@ -123,3 +123,5 @@
 ### 首次云端构建及修正
 
 GitHub Actions 37553615276（修复提交 e49d055b）完成了代码和测试编译及 APK 打包，执行 89 项单元测试，87 项通过，2 项 TabPagerTest 失败。完整 XML 报告确认：测试中手动创建的 WebView 缺少 WebViewFactory 设置的 CompositeTouchListener tag，长按处理器注册时发生空指针。修正测试工厂初始化，使其遵循生产 WebView 的初始化约定；保留失效标签和父容器迁移断言，未跳过测试或放宽断言。等待后续完整云端构建结果。
+
+GitHub Actions 37554503062（测试修正提交 6f1fdc8a）中 89 项单元测试全部通过；随后 lint 指出 TaskInfo.taskId 需要 API 29，不兼容最低 API 28。移除无痕退出时的任务列表查询，直接使用 API 21 起可用的 Activity.finishAndRemoveTask()。未关闭 lint 或提升最低 Android 版本。

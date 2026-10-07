@@ -14,7 +14,6 @@ import acr.browser.lightning.log.Logger
 import acr.browser.lightning.settings.activity.SettingsActivity
 import acr.browser.lightning.shortcuts.ShortcutGenerator
 import acr.browser.lightning.utils.IntentUtils
-import android.app.ActivityManager
 import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Bitmap
@@ -31,7 +30,6 @@ class BrowserNavigator @Inject constructor(
     private val logger: Logger,
     private val exitCleanup: ExitCleanup,
     @IncognitoMode private val incognitoMode: Boolean,
-    private val activityManager: ActivityManager,
     private val appCoroutineScope: AppCoroutineScope,
     private val fileDownloader: FileDownloader,
     private val siteAccessPolicy: SiteAccessPolicy,
@@ -54,7 +52,7 @@ class BrowserNavigator @Inject constructor(
     override suspend fun closeBrowser() {
         exitCleanup.cleanUp()
         if (incognitoMode) {
-            finishIncognitoTask()
+            activity.finishAndRemoveTask()
         } else {
             activity.finish()
         }
@@ -79,7 +77,7 @@ class BrowserNavigator @Inject constructor(
         if (incognitoMode) {
             appCoroutineScope.launch {
                 exitCleanup.cleanUp()
-                finishIncognitoTask()
+                activity.finishAndRemoveTask()
             }
         } else {
             activity.moveTaskToBack(true)
@@ -88,12 +86,6 @@ class BrowserNavigator @Inject constructor(
 
     override fun launchIncognito(url: String?) {
         IncognitoBrowserActivity.launch(activity, url)
-    }
-
-    private fun finishIncognitoTask() {
-        // A picker, scanner or settings page may now be on top of the browser's task.
-        val task = activityManager.appTasks.firstOrNull { it.taskInfo?.taskId == activity.taskId }
-        if (task != null) task.finishAndRemoveTask() else activity.finishAndRemoveTask()
     }
 
     companion object {
