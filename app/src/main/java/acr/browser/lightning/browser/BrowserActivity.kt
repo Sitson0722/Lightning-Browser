@@ -5,17 +5,20 @@ import acr.browser.lightning.R
 import acr.browser.lightning.ThemableActivity
 import acr.browser.lightning.browser.keys.KeyEventAdapter
 import acr.browser.lightning.browser.search.IntentExtractor
+import acr.browser.lightning.browser.tab.FileUploadRequest
 import acr.browser.lightning.browser.tab.TabPager
 import acr.browser.lightning.browser.ui.TabConfiguration
 import acr.browser.lightning.compose.BrowserTheme
 import acr.browser.lightning.di.injector
 import acr.browser.lightning.search.SuggestionsModel
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.KeyEvent
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -39,12 +42,22 @@ import javax.inject.Named
  */
 abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
 
+    private var pendingFileUpload: FileUploadRequest? = null
+    private var fileChooserOpen = false
+    private var qrScannerOpen = false
+
     @Suppress("ConvertLambdaToReference")
     private val launcher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { presenter.onEvent(BrowserUiEvent.FileChooserResult(it)) }
+    ) { result ->
+        val request = pendingFileUpload
+        pendingFileUpload = null
+        fileChooserOpen = false
+        request?.onResult(result)
+    }
 
     private val qrScannerLauncher = registerForActivityResult(ScanContract()) { result ->
+        qrScannerOpen = false
         result.contents?.let { presenter.onEvent(BrowserUiEvent.QrScanResult(it)) }
     }
 
@@ -81,6 +94,9 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
 
         super.onCreate(savedInstanceState)
 
+        fileChooserOpen = savedInstanceState?.getBoolean(FILE_CHOOSER_OPEN) ?: false
+        qrScannerOpen = savedInstanceState?.getBoolean(QR_SCANNER_OPEN) ?: false
+
         setContent {
             val currentState = presenter.state.collectAsMutableState(
                 produceState = { BrowserComposeState(it) },
@@ -97,12 +113,16 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
                     customFrame,
                     suggestionsModel
                 )
-                if (currentState.showCustomView) {
-                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
-                    setFullscreen(enabled = true, immersive = true)
-                } else {
-                    requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                    setFullscreen(enabled = false, immersive = false)
+                LaunchedEffect(currentState.showCustomView) {
+                    requestedOrientation = if (currentState.showCustomView) {
+                        ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                    }
+                    setFullscreen(
+                        enabled = currentState.showCustomView,
+                        immersive = currentState.showCustomView
+                    )
                 }
             }
         }
@@ -141,8 +161,17 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
     }
 
     override fun onDestroy() {
+        val request = pendingFileUpload
+        pendingFileUpload = null
+        request?.cancel()
         super.onDestroy()
         presenter.onViewDetached()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean(FILE_CHOOSER_OPEN, fileChooserOpen)
+        outState.putBoolean(QR_SCANNER_OPEN, qrScannerOpen)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onPause() {
@@ -160,19 +189,53 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
     /**
      * @see BrowserContract.View.showFileChooser
      */
-    override fun showFileChooser(intent: Intent) {
-        launcher.launch(intent)
+    override fun showFileChooser(request: FileUploadRequest) {
+        if (!request.isPending) return
+        if (fileChooserOpen || qrScannerOpen || isFinishing || isDestroyed) {
+            request.cancel()
+            return
+        }
+        pendingFileUpload = request
+        fileChooserOpen = true
+        try {
+            launcher.launch(request.intent)
+        } catch (_: ActivityNotFoundException) {
+            onFileChooserLaunchFailed()
+        } catch (_: SecurityException) {
+            onFileChooserLaunchFailed()
+        }
+    }
+
+    private fun onFileChooserLaunchFailed() {
+        val request = pendingFileUpload
+        pendingFileUpload = null
+        fileChooserOpen = false
+        request?.cancel()
+        Toast.makeText(this, R.string.message_file_chooser_unavailable, Toast.LENGTH_LONG).show()
     }
 
     override fun showQrScanner() {
-        qrScannerLauncher.launch(
-            ScanOptions().apply {
-                setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                setPrompt(getString(R.string.scan_qr_prompt))
-                setBeepEnabled(false)
-                setOrientationLocked(false)
-            }
-        )
+        if (qrScannerOpen || fileChooserOpen || isFinishing || isDestroyed) return
+        qrScannerOpen = true
+        try {
+            qrScannerLauncher.launch(
+                ScanOptions().apply {
+                    setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                    setPrompt(getString(R.string.scan_qr_prompt))
+                    setBeepEnabled(false)
+                    setOrientationLocked(false)
+                }
+            )
+        } catch (_: ActivityNotFoundException) {
+            onQrScannerLaunchFailed()
+        } catch (_: SecurityException) {
+            onQrScannerLaunchFailed()
+        }
+    }
+
+    private fun onQrScannerLaunchFailed() {
+        qrScannerOpen = false
+        Toast.makeText(this, R.string.message_qr_scanner_unavailable, Toast.LENGTH_LONG).show()
     }
 
     override fun showScannedText(text: String) {
@@ -205,6 +268,8 @@ abstract class BrowserActivity : ThemableActivity(), BrowserContract.View {
 
     private companion object {
         const val MAX_SCANNED_TEXT_LENGTH = 4_096
+        const val FILE_CHOOSER_OPEN = "file_chooser_open"
+        const val QR_SCANNER_OPEN = "qr_scanner_open"
     }
 
     // TODO: Animate color change

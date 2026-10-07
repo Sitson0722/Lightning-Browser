@@ -17,7 +17,6 @@ import acr.browser.lightning.ssl.SslState
 import acr.browser.lightning.useragent.UserAgentProvider
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Bundle
@@ -27,7 +26,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.webkit.WebView
-import androidx.activity.result.ActivityResult
 import androidx.core.graphics.createBitmap
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
@@ -343,11 +341,9 @@ class TabAdapter @AssistedInject constructor(
 
     override fun downloadRequests(): Flow<PendingDownload> = downloadsShareFlow
 
-    override fun fileChooserRequests(): Flow<Intent> = tabWebChromeClient.fileChooserSharedFlow
+    override fun fileChooserRequests(): Flow<FileUploadRequest> = tabWebChromeClient.fileChooserRequests
 
-    override fun handleFileChooserResult(activityResult: ActivityResult) {
-        tabWebChromeClient.onResult(activityResult)
-    }
+    override fun cancelFileUpload() = tabWebChromeClient.cancelFileUpload()
 
     override fun showCustomViewRequests(): Flow<Unit> = tabWebChromeClient.showCustomViewSharedFlow
 
@@ -385,6 +381,7 @@ class TabAdapter @AssistedInject constructor(
         }
 
     override fun destroy() {
+        tabWebChromeClient.cancelFileUpload()
         viewIdGenerator.releaseViewId(id)
         previewModel.prune()
         webView.stopLoading()

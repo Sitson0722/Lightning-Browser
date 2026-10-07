@@ -46,7 +46,6 @@ import acr.browser.lightning.utils.isBookmarkUrl
 import acr.browser.lightning.utils.isDownloadsUrl
 import acr.browser.lightning.utils.isHistoryUrl
 import acr.browser.lightning.utils.isSpecialUrl
-import androidx.activity.result.ActivityResult
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.net.toUri
 import kotlinx.coroutines.CoroutineScope
@@ -161,7 +160,7 @@ class BrowserPresenter @Inject constructor(
                     isRootFolder = true
                 )
             }
-            selectTab(model.selectTab(lastTab.id))
+            selectTabById(lastTab.id)
         }
 
         browserCoroutineScope.launch {
@@ -194,6 +193,7 @@ class BrowserPresenter @Inject constructor(
      */
     fun onViewDetached() {
         view = null
+        model.tabsList.forEach { it.cancelFileUpload() }
 
         tabJobs.forEach { it.cancel() }
         allTabsJobMap.values.forEach { it.cancel() }
@@ -218,7 +218,6 @@ class BrowserPresenter @Inject constructor(
             when (browserUiEvent) {
                 BrowserUiEvent.SnackbarActionPerformed -> onSnackbarActionPerformed()
                 BrowserUiEvent.SnackbarDismissed -> onSnackbarDismissed()
-                is BrowserUiEvent.FileChooserResult -> onFileChooserResult(browserUiEvent.activityResult)
                 is BrowserUiEvent.QrScanResult -> onQrScanResult(browserUiEvent.content)
                 is BrowserUiEvent.CopyScannedText -> {
                     navigator.copyPageLink(browserUiEvent.content)
@@ -359,6 +358,11 @@ class BrowserPresenter @Inject constructor(
         }
     }
 
+    private suspend fun selectTabById(id: Int, focusTab: Boolean = true) {
+        val selected = model.selectTab(id) ?: return
+        selectTab(selected, focusTab)
+    }
+
     private suspend fun selectTab(tabModel: TabModel?, focusTab: Boolean = true) {
         if (currentTab == tabModel) {
             state.updateSelf { copy(openTabs = false) }
@@ -487,12 +491,6 @@ class BrowserPresenter @Inject constructor(
         }
 
         tabJobs += browserCoroutineScope.launch {
-            tab.fileChooserRequests().collectLatest {
-                view?.showFileChooser(it)
-            }
-        }
-
-        tabJobs += browserCoroutineScope.launch {
             tab.showCustomViewRequests().collectLatest {
                 state.updateSelf { copy(showCustomView = true) }
                 isCustomViewShowing = true
@@ -520,6 +518,14 @@ class BrowserPresenter @Inject constructor(
         forEach { tabModel ->
             if (allTabsJobMap[tabModel.id] == null) {
                 allTabsJobMap[tabModel.id] = browserCoroutineScope.launch {
+                    // Uploads remain bound to this tab while another tab is selected.
+                    launch {
+                        tabModel.fileChooserRequests().collectLatest { request ->
+                            val attachedView = view
+                            if (attachedView == null) request.cancel()
+                            else attachedView.showFileChooser(request)
+                        }
+                    }
                     combineMultiple(
                         tabModel.titleChanges(),
                         tabModel.faviconChanges(),
@@ -666,12 +672,12 @@ class BrowserPresenter @Inject constructor(
         val tab = model.createTab(tabInitializer, tabType = tabType)
         state.updateSelf { updateTabViewState() }
         if (shouldSelect) {
-            selectTab(model.selectTab(tab.id))
+            selectTabById(tab.id)
         } else {
             showSnackbar(
                 message = resourceProvider.stringResource(R.string.result_open_background_tab),
                 action = EphemeralAction(resourceProvider.stringResource(R.string.action_open)) {
-                    selectTab(model.selectTab(tab.id))
+                    selectTabById(tab.id)
                 }
             )
         }
@@ -734,7 +740,7 @@ class BrowserPresenter @Inject constructor(
 
     private suspend fun onTabClick(id: Int) {
         if (model.tabsList.none { it.id == id }) return
-        selectTab(model.selectTab(id))
+        selectTabById(id)
     }
 
     private suspend fun onTabLongClick(id: Int) {
@@ -772,7 +778,7 @@ class BrowserPresenter @Inject constructor(
             } ?: model.tabsList.firstOrNull()?.id
             nextTabId?.let {
                 val shouldClose = currentTab?.tabType == TabModel.Type.EPHEMERAL
-                selectTab(model.selectTab(it), focusTab = false)
+                selectTabById(it, focusTab = false)
                 if (shouldClose) {
                     navigator.backgroundBrowser()
                 } else {
@@ -1377,7 +1383,7 @@ class BrowserPresenter @Inject constructor(
                     model.deleteTab(it.id)
                     state.updateSelf { updateTabViewState() }
                     if (currentTabId != id) {
-                        selectTab(model.selectTab(id))
+                        selectTabById(id)
                     }
                 }
             }
@@ -1470,15 +1476,11 @@ class BrowserPresenter @Inject constructor(
         onDialogDismissed()
     }
 
-    private fun onFileChooserResult(activityResult: ActivityResult) {
-        currentTab?.handleFileChooserResult(activityResult)
-    }
-
     private suspend fun onQrScanResult(content: String) {
-        val value = content.trim()
-        val uri = value.toUri()
-        if ((uri.scheme == "http" || uri.scheme == "https") && !uri.host.isNullOrBlank()) {
-            onNewAction(BrowserContract.Action.LoadUrl(value))
+        if (content.isBlank()) return
+        val url = scannedUrl(content)
+        if (url != null) {
+            onNewAction(BrowserContract.Action.LoadUrl(url))
         } else {
             view?.showScannedText(content)
         }
@@ -1505,7 +1507,7 @@ class BrowserPresenter @Inject constructor(
         val tab = model.reopenTab()
         state.updateSelf { updateTabViewState() }
         if (tab != null) {
-            selectTab(model.selectTab(tab.id))
+            selectTabById(tab.id)
         }
     }
 

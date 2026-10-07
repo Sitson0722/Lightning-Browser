@@ -3,10 +3,8 @@ package acr.browser.lightning.browser.tab
 import acr.browser.lightning.download.PendingDownload
 import acr.browser.lightning.ssl.SslCertificateInfo
 import acr.browser.lightning.ssl.SslState
-import android.content.Intent
 import android.os.Bundle
 import android.os.Message
-import androidx.activity.result.ActivityResult
 import androidx.annotation.ColorInt
 import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.flow.Flow
@@ -210,12 +208,10 @@ interface TabModel {
     /**
      * Emits requests to open the file chooser that are triggered by the browser.
      */
-    fun fileChooserRequests(): Flow<Intent>
+    fun fileChooserRequests(): Flow<FileUploadRequest>
 
-    /**
-     * Handle a resulting file to upload after selecting a file from the file chooser.
-     */
-    fun handleFileChooserResult(activityResult: ActivityResult)
+    /** Complete outstanding upload callbacks before the browser or this tab is destroyed. */
+    fun cancelFileUpload()
 
     /**
      * Emits requests by the browser to display a custom view (i.e. full screen video) over the

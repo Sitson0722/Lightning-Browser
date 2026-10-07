@@ -305,4 +305,6 @@
     <string name="message_allowlist_invalid_file">設定檔已損壞、不受信任或版本不受支援</string>
     <string name="message_allowlist_read_failed">無法讀取所選設定檔</string>
     <string name="message_allowlist_save_failed">無法儲存匯入的網站</string>
+    <string name="message_file_chooser_unavailable">無法開啟檔案選擇器，請重試。</string>
+    <string name="message_qr_scanner_unavailable">無法開啟掃碼頁面，請重試。</string>
 </resources>

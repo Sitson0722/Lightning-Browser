@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>文件上传回归测试</title>
+<style>
+  body { font: 16px sans-serif; margin: 24px; }
+  label { display: block; margin: 24px 0; }
+  input { display: block; margin-top: 8px; max-width: 100%; }
+  pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+</style>
+<h1>文件上传回归测试</h1>
+<p>选择文件后检查名称、数量和实际可读取字节数。取消后重试，并测试切换标签后返回。</p>
+<label>任意单文件<input type="file"></label>
+<label>任意多文件<input type="file" multiple></label>
+<label>图片<input type="file" accept="image/*"></label>
+<label>PDF<input type="file" accept="application/pdf"></label>
+<label>多种 MIME<input type="file" accept="image/*,application/pdf" multiple></label>
+<label>扩展名<input type="file" accept=".pdf,.txt"></label>
+<label>空 accept<input type="file" accept=""></label>
+<label>带拍照提示的图片输入<input type="file" accept="image/*" capture="environment"></label>
+<button id="clear">清空日志</button>
+<pre id="log" aria-live="polite"></pre>
+<script>
+  const log = document.querySelector('#log');
+  function write(message) {
+    log.textContent += message + '\n';
+  }
+  document.querySelector('#clear').addEventListener('click', () => { log.textContent = ''; });
+  document.querySelectorAll('input').forEach(input => {
+    const label = input.parentElement.firstChild.textContent;
+    input.addEventListener('cancel', () => write(label + ': 已取消，或选择未变化'));
+    input.addEventListener('change', async () => {
+      const files = Array.from(input.files);
+      write(label + ': ' + files.length + ' 个文件');
+      for (const file of files) {
+        try {
+          // This verifies that returned URIs can be read, without sending private files anywhere.
+          const bytes = await file.arrayBuffer();
+          write(JSON.stringify({ name: file.name, type: file.type, size: file.size,
+            readableBytes: bytes.byteLength }));
+        } catch (error) {
+          write(file.name + ': 读取失败 ' + error.message);
+        }
+      }
+    });
+  });
+</script>
+</html>

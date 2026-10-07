@@ -42,12 +42,13 @@ class TabsRepository @Inject constructor(
     override var selectedTab: TabModel? = null
 
     override suspend fun deleteTab(id: Int): Unit = withContext(coroutineDispatchers.main) {
+        val tab = tabsList.find { it.id == id } ?: return@withContext
         if (selectedTab?.id == id) {
             tabPager.clearTab(id)
+            selectedTab = null
         } else {
             tabPager.removeTab(id)
         }
-        val tab = tabsList.forId(id)
         recentTabModel.addClosedTab(tab.freeze())
         tab.destroy()
         tabsList = tabsList - tab
@@ -58,6 +59,7 @@ class TabsRepository @Inject constructor(
     override suspend fun deleteAllTabs(): Unit = withContext(coroutineDispatchers.main) {
         isInitialized.await()
         tabPager.clearAllTabs()
+        selectedTab = null
 
         tabsList.forEach(TabModel::destroy)
         tabsList = emptyList()
@@ -98,10 +100,10 @@ class TabsRepository @Inject constructor(
         recentTabModel.lastClosed()?.let { createTab(BundleInitializer(it)) }
     }
 
-    override fun selectTab(id: Int): TabModel {
-        val selected = tabsList.forId(id)
+    override fun selectTab(id: Int): TabModel? {
+        val selected = tabsList.find { it.id == id } ?: return null
+        if (!tabPager.selectTab(id)) return null
         selectedTab = selected
-        tabPager.selectTab(id)
 
         return selected
     }
@@ -171,6 +173,4 @@ class TabsRepository @Inject constructor(
     override suspend fun clean() {
         bundleStore.deleteAll()
     }
-
-    private fun List<TabModel>.forId(id: Int): TabModel = requireNotNull(find { it.id == id })
 }

@@ -54,9 +54,7 @@ class BrowserNavigator @Inject constructor(
     override suspend fun closeBrowser() {
         exitCleanup.cleanUp()
         if (incognitoMode) {
-            activityManager.appTasks
-                .first { it.taskInfo?.topActivity?.className == IncognitoBrowserActivity::class.java.name }
-                .finishAndRemoveTask()
+            finishIncognitoTask()
         } else {
             activity.finish()
         }
@@ -81,9 +79,7 @@ class BrowserNavigator @Inject constructor(
         if (incognitoMode) {
             appCoroutineScope.launch {
                 exitCleanup.cleanUp()
-                activityManager.appTasks
-                    .first { it.taskInfo?.topActivity?.className == IncognitoBrowserActivity::class.java.name }
-                    .finishAndRemoveTask()
+                finishIncognitoTask()
             }
         } else {
             activity.moveTaskToBack(true)
@@ -92,6 +88,12 @@ class BrowserNavigator @Inject constructor(
 
     override fun launchIncognito(url: String?) {
         IncognitoBrowserActivity.launch(activity, url)
+    }
+
+    private fun finishIncognitoTask() {
+        // A picker, scanner or settings page may now be on top of the browser's task.
+        val task = activityManager.appTasks.firstOrNull { it.taskInfo?.taskId == activity.taskId }
+        if (task != null) task.finishAndRemoveTask() else activity.finishAndRemoveTask()
     }
 
     companion object {

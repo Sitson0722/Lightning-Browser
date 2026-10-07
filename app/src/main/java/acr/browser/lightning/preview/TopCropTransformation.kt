@@ -2,59 +2,42 @@ package acr.browser.lightning.preview
 
 import android.graphics.Bitmap
 import androidx.core.graphics.scale
-import coil3.annotation.ExperimentalCoilApi
-import coil3.decode.DecodeUtils
 import coil3.size.Dimension
-import coil3.size.Scale
 import coil3.size.Size
 import coil3.size.isOriginal
-import coil3.size.pxOrElse
 import coil3.transform.Transformation
-import coil3.util.IntPair
+import kotlin.math.ceil
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * Transforms a [Bitmap] such that it is scaled down to fit horizontally within the target size and
- * then the bottom is cropped off so that the top fully fits into the destination.
+ * Scales a [Bitmap] to cover the destination, then crops from the top and horizontal center.
  */
 object TopCropTransformation : Transformation() {
-    override val cacheKey: String = "TopCropTransformation"
+    override val cacheKey: String = "TopCropTransformation:v2"
 
-    @OptIn(ExperimentalCoilApi::class)
     override suspend fun transform(input: Bitmap, size: Size): Bitmap {
-        val outputSize = calculateOutputSize(input, size)
-        val targetWidth = outputSize.first
-        val targetHeight = outputSize.second
+        if (size.isOriginal) return input
+        val width = (size.width as? Dimension.Pixels)?.px
+        val height = (size.height as? Dimension.Pixels)?.px
+        val targetWidth = (width ?: (input.width * (height ?: input.height).toDouble() /
+            input.height).roundToInt()).coerceAtLeast(1)
+        val targetHeight = (height ?: (input.height * targetWidth.toDouble() /
+            input.width).roundToInt()).coerceAtLeast(1)
+        val multiplier = max(
+            targetWidth.toDouble() / input.width,
+            targetHeight.toDouble() / input.height
+        )
 
         val scaled = input.scale(
-            targetWidth,
-            (targetWidth * (input.height / targetWidth.toFloat())).roundToInt(),
+            ceil(input.width * multiplier).toInt().coerceAtLeast(targetWidth),
+            ceil(input.height * multiplier).toInt().coerceAtLeast(targetHeight),
             false
         )
-        return Bitmap.createBitmap(scaled, 0, 0, targetWidth, targetHeight)
-    }
-
-    @OptIn(ExperimentalCoilApi::class)
-    private fun calculateOutputSize(input: Bitmap, size: Size): IntPair {
-        if (size.isOriginal) {
-            return IntPair(input.width, input.height)
-        }
-
-        val (dstWidth, dstHeight) = size
-        if (dstWidth is Dimension.Pixels && dstHeight is Dimension.Pixels) {
-            return IntPair(dstWidth.px, dstHeight.px)
-        }
-
-        val multiplier = DecodeUtils.computeSizeMultiplier(
-            srcWidth = input.width,
-            srcHeight = input.height,
-            dstWidth = size.width.pxOrElse(Int.Companion::MIN_VALUE),
-            dstHeight = size.height.pxOrElse(Int.Companion::MIN_VALUE),
-            scale = Scale.FILL,
-            maxSize = Size.ORIGINAL
+        val output = Bitmap.createBitmap(
+            scaled, (scaled.width - targetWidth) / 2, 0, targetWidth, targetHeight
         )
-        val outputWidth = (multiplier * input.width).roundToInt()
-        val outputHeight = (multiplier * input.height).roundToInt()
-        return IntPair(outputWidth, outputHeight)
+        if (scaled !== input && scaled !== output) scaled.recycle()
+        return output
     }
 }

@@ -379,4 +379,6 @@
     <string name="message_allowlist_invalid_file">The configuration is damaged, untrusted, or unsupported</string>
     <string name="message_allowlist_read_failed">Could not read the selected configuration</string>
     <string name="message_allowlist_save_failed">Could not save the imported sites</string>
+    <string name="message_file_chooser_unavailable">Unable to open the file chooser. Please try again.</string>
+    <string name="message_qr_scanner_unavailable">Unable to open the QR scanner. Please try again.</string>
 </resources>

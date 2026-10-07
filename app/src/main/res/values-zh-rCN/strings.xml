@@ -339,4 +339,6 @@
     <string name="message_allowlist_invalid_file">配置文件已损坏、不受信任或版本不受支持</string>
     <string name="message_allowlist_read_failed">无法读取所选配置文件</string>
     <string name="message_allowlist_save_failed">无法保存导入的网站</string>
+    <string name="message_file_chooser_unavailable">无法打开文件选择器，请重试。</string>
+    <string name="message_qr_scanner_unavailable">无法打开扫码页面，请重试。</string>
 </resources>

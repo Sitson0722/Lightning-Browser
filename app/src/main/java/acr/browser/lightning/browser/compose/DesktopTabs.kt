@@ -139,9 +139,12 @@ fun TopTabDesktopNavigationBar(
     suggestionsModel: SuggestionsModel,
 ) {
     val lazyListState = rememberLazyListState()
-    if (browserViewState.scrollToTab != -1) {
-        LaunchedEffect(browserViewState.scrollToTab) {
-            lazyListState.scrollToItem(browserViewState.scrollToTab)
+    val scrollToTab = browserViewState.scrollToTab
+    if (scrollToTab != -1) {
+        LaunchedEffect(scrollToTab, browserViewState.tabs.size) {
+            if (scrollToTab in browserViewState.tabs.indices) {
+                lazyListState.scrollToItem(scrollToTab)
+            }
             presenter.onEvent(BrowserUiEvent.TabScroll)
         }
     }
