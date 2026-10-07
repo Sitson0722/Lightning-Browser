@@ -7,6 +7,8 @@ package acr.browser.lightning.database.downloads
  * @param location The location of the download on disk.
  * @param title The file name.
  * @param contentSize The user readable content size.
+ * @param sizeBytes The size in bytes, or -1 when unknown.
+ * @param downloadedAt The time the download started in epoch milliseconds, or 0 for legacy entries.
  * @param downloadManagerId The ID assigned by Android's DownloadManager.
  */
 data class DownloadEntry(
@@ -15,6 +17,8 @@ data class DownloadEntry(
     val title: String,
     val contentSize: String,
     val downloadManagerId: Long = -1L,
+    val sizeBytes: Long = -1L,
+    val downloadedAt: Long = 0L,
 ) {
     companion object {
         /** Entry downloaded directly into Android MediaStore rather than DownloadManager. */

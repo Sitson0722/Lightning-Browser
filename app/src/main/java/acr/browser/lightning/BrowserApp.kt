@@ -1,5 +1,6 @@
 package acr.browser.lightning
 
+import acr.browser.lightning.browser.access.SiteAccessPolicy
 import acr.browser.lightning.concurrency.AppCoroutineScope
 import acr.browser.lightning.database.bookmark.BookmarkExporter
 import acr.browser.lightning.database.bookmark.BookmarkRepository
@@ -13,6 +14,10 @@ import acr.browser.lightning.utils.FileUtils
 import acr.browser.lightning.utils.LeakCanaryUtils
 import android.app.Application
 import android.os.StrictMode
+import android.webkit.ServiceWorkerClient
+import android.webkit.ServiceWorkerController
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -42,6 +47,9 @@ class BrowserApp : Application() {
 
     @Inject
     internal lateinit var bookmarkExporter: BookmarkExporter
+
+    @Inject
+    internal lateinit var siteAccessPolicy: SiteAccessPolicy
 
     lateinit var applicationComponent: AppComponent
 
@@ -89,6 +97,12 @@ class BrowserApp : Application() {
             .incognitoMode(isIncognito)
             .build()
         injector.inject(this)
+
+        // Workers can fetch resources without passing through a tab's WebViewClient.
+        ServiceWorkerController.getInstance().setServiceWorkerClient(object : ServiceWorkerClient() {
+            override fun shouldInterceptRequest(request: WebResourceRequest): WebResourceResponse? =
+                siteAccessPolicy.interceptRequest(request)
+        })
 
         appCoroutineScope.launch {
             cleanup.cleanup()

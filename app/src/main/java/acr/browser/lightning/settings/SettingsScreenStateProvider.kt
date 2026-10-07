@@ -3,7 +3,6 @@ package acr.browser.lightning.settings
 import acr.browser.lightning.settings.framework.SettingsFrameworkState
 import acr.browser.lightning.settings.navigation.SettingsNavigation
 import acr.browser.lightning.settings.screens.AboutSettingsScreen
-import acr.browser.lightning.settings.screens.AdBlockSettingsScreen
 import acr.browser.lightning.settings.screens.AdvancedSettingsScreen
 import acr.browser.lightning.settings.screens.BookmarkSettingsScreen
 import acr.browser.lightning.settings.screens.DebugSettingsScreen
@@ -16,7 +15,6 @@ import javax.inject.Inject
 class SettingsScreenStateProvider @Inject constructor(
     private val rootSettingsScreen: RootSettingsScreen,
     private val aboutSettingsScreen: AboutSettingsScreen,
-    private val adBlockSettingsScreen: AdBlockSettingsScreen,
     private val advancedSettingsScreen: AdvancedSettingsScreen,
     private val bookmarkSettingsScreen: BookmarkSettingsScreen,
     private val debugSettingsScreen: DebugSettingsScreen,
@@ -29,7 +27,6 @@ class SettingsScreenStateProvider @Inject constructor(
         settingsNavigation: SettingsNavigation
     ): SettingsFrameworkState = when (settingsNavigation) {
         SettingsNavigation.ROOT -> rootSettingsScreen.createSettingsFrameworkState()
-        SettingsNavigation.ADBLOCK -> adBlockSettingsScreen.createSettingsFrameworkState()
         SettingsNavigation.GENERAL -> generalSettingsScreen.createSettingsFrameworkState()
         SettingsNavigation.BOOKMARK -> bookmarkSettingsScreen.createSettingsFrameworkState()
         SettingsNavigation.DISPLAY -> displaySettingsScreen.createSettingsFrameworkState()

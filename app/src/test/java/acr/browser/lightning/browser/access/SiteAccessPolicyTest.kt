@@ -3,6 +3,8 @@ package acr.browser.lightning.browser.access
 import acr.browser.lightning.SDK_VERSION
 import acr.browser.lightning.TestApplication
 import android.app.Application
+import android.net.Uri
+import android.webkit.WebResourceRequest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.Before
 import org.junit.Test
@@ -10,134 +12,118 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import java.time.Clock
-import java.time.Instant
-import java.time.ZoneOffset
+import java.io.StringReader
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = TestApplication::class, sdk = [SDK_VERSION])
 class SiteAccessPolicyTest {
-
     private lateinit var policy: SiteAccessPolicy
 
     @Before
     fun setUp() {
         val application = RuntimeEnvironment.getApplication() as Application
-        application.getSharedPreferences("site_access_policy", 0).edit().clear().commit()
-        policy = SiteAccessPolicy(application)
+        // An upgraded installation can retain an old site allowlist.
+        application.getSharedPreferences("site_access_policy", 0).edit()
+            .putStringSet("allowed_domains", setOf("reddit.com"))
+            .commit()
+        policy = SiteAccessPolicy(
+            DomainBlacklist.parse(StringReader("reddit.com\nnetflix.com\nqzone.qq.com"))
+        )
     }
 
     @Test
-    fun `editing window uses fixed UTC plus eight boundaries`() {
-        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T13:59:59Z"))).isFalse()
-        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T14:00:00Z"))).isTrue()
-        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T14:59:59Z"))).isTrue()
-        assertThat(policy.isEditingWindowOpen(clockAt("2026-01-01T15:00:00Z"))).isFalse()
+    fun `blacklist is active immediately despite saved allowlist`() {
+        assertThat(policy.isUrlAllowed("https://reddit.com")).isFalse()
+        assertThat(policy.isUrlAllowed("https://old.reddit.com/r/test")).isFalse()
+        assertThat(policy.isUrlAllowed("https://www.netflix.com")).isFalse()
     }
 
     @Test
-    fun `unrestricted browsing includes midday and editing windows`() {
-        assertThat(
-            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T03:59:59Z"))
-        ).isFalse()
-        assertThat(
-            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T04:00:00Z"))
-        ).isTrue()
-        assertThat(
-            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T04:59:59Z"))
-        ).isTrue()
-        assertThat(
-            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T05:00:00Z"))
-        ).isFalse()
-        assertThat(
-            policy.isUnrestrictedBrowsingWindowOpen(clockAt("2026-01-01T14:30:00Z"))
-        ).isTrue()
+    fun `every domain in the generated APK asset is blocked on construction`() {
+        val application = RuntimeEnvironment.getApplication() as Application
+        val entries = application.assets.open("blacklist.txt").bufferedReader().use { reader ->
+            reader.lineSequence().map { it.removePrefix("\uFEFF").substringBefore('#').trim() }
+                .filter(String::isNotEmpty).toSet()
+        }
+        application.getSharedPreferences("site_access_policy", 0).edit()
+            .putStringSet("allowed_domains", entries).commit()
+        val bundledPolicy = SiteAccessPolicy(application)
+        for (domain in entries) {
+            assertThat(bundledPolicy.isUrlAllowed("https://$domain")).isFalse()
+            assertThat(bundledPolicy.isUrlAllowed("https://child.$domain/path")).isFalse()
+        }
     }
 
     @Test
-    fun `site can only be added during editing window`() {
-        val closedResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T13:00:00Z"))
-        val middayResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T04:30:00Z"))
-        val openResult = policy.allowUrl("https://example.com", clockAt("2026-01-01T14:30:00Z"))
-
-        assertThat(closedResult).isEqualTo(SiteAccessPolicy.AddResult.WindowClosed)
-        assertThat(middayResult).isEqualTo(SiteAccessPolicy.AddResult.WindowClosed)
-        assertThat(openResult).isEqualTo(SiteAccessPolicy.AddResult.Added("example.com"))
+    fun `unlisted sites including formerly restricted sites are allowed`() {
+        assertThat(policy.isUrlAllowed("https://example.org")).isTrue()
+        assertThat(policy.isUrlAllowed("https://my.lzu.edu.cn")).isTrue()
+        assertThat(policy.isUrlAllowed("https://notmy.lzu.edu.cn")).isTrue()
+        assertThat(policy.isUrlAllowed("https://otherreddit.com")).isTrue()
+        assertThat(policy.isUrlAllowed("https://reddit.com.example.org")).isTrue()
     }
 
     @Test
-    fun `signed configuration can be imported outside editing window`() {
-        val result = policy.importConfig(validAllowlistConfig())
-        val closedClock = clockAt("2026-01-01T16:00:00Z")
-
-        assertThat(result).isEqualTo(SiteAccessPolicy.ImportResult.Ready(2, 0))
-        assertThat(policy.isUrlAllowed("https://news.example.com", closedClock)).isTrue()
-        assertThat(policy.isUrlAllowed("https://school.edu.cn", closedClock)).isTrue()
+    fun `a listed subdomain does not block its parent or siblings`() {
+        assertThat(policy.isUrlAllowed("https://qzone.qq.com")).isFalse()
+        assertThat(policy.isUrlAllowed("https://a.qzone.qq.com")).isFalse()
+        assertThat(policy.isUrlAllowed("https://qq.com")).isTrue()
+        assertThat(policy.isUrlAllowed("https://mail.qq.com")).isTrue()
     }
 
     @Test
-    fun `invalid configuration does not change allowed sites`() {
-        val file = validAllowlistConfig().also {
-            it[25] = (it[25].toInt() xor 1).toByte()
+    fun `download extensions do not exempt blacklisted hosts`() {
+        assertThat(policy.isUrlAllowed("https://reddit.com/report.pdf")).isFalse()
+        assertThat(policy.isUrlAllowed("https://reddit.com/archive.ZIP?source=mail")).isFalse()
+        assertThat(policy.isUrlAllowed("https://files.example.org/report.pdf")).isTrue()
+    }
+
+    @Test
+    fun `matching handles case ports trailing dots encoded hosts and credentials`() {
+        assertThat(policy.isUrlAllowed("HTTPS://REDDIT.COM.:8443/path")).isFalse()
+        assertThat(policy.isUrlAllowed("https://%72eddit.com/path")).isFalse()
+        assertThat(policy.isUrlAllowed("https://example.org@reddit.com/path")).isFalse()
+        assertThat(policy.isUrlAllowed("https://reddit.com@example.org/path")).isTrue()
+    }
+
+    @Test
+    fun `internal URLs remain accessible`() {
+        assertThat(policy.isUrlAllowed("about:blank")).isTrue()
+        assertThat(policy.isUrlAllowed("file:///internal/homepage.html")).isTrue()
+        assertThat(policy.isUrlAllowed("data:text/html,hello")).isTrue()
+    }
+
+    @Test
+    fun `main frame request gets a forbidden page including redirected and POST requests`() {
+        val response = policy.interceptRequest(request("https://reddit.com", mainFrame = true))!!
+        assertThat(response.statusCode).isEqualTo(403)
+        assertThat(response.mimeType).isEqualTo("text/html")
+        assertThat(response.responseHeaders).containsEntry("Cache-Control", "no-store")
+        assertThat(response.data.bufferedReader().readText()).contains("Site blocked")
+    }
+
+    @Test
+    fun `subresources frames and workers get an empty forbidden response`() {
+        val response = policy.interceptRequest(request("https://old.reddit.com/resource"))!!
+        assertThat(response.statusCode).isEqualTo(403)
+        assertThat(response.data.read()).isEqualTo(-1)
+        assertThat(policy.interceptRequest(request("https://example.org/resource"))).isNull()
+    }
+
+    private fun request(url: String, mainFrame: Boolean = false): WebResourceRequest =
+        object : WebResourceRequest {
+            override fun getUrl(): Uri = Uri.parse(url)
+            override fun isForMainFrame(): Boolean = mainFrame
+            override fun isRedirect(): Boolean = true
+            override fun hasGesture(): Boolean = false
+            override fun getMethod(): String = "POST"
+            override fun getRequestHeaders(): Map<String, String> = emptyMap()
         }
 
-        assertThat(policy.importConfig(file)).isEqualTo(SiteAccessPolicy.ImportResult.InvalidFile)
-        assertThat(
-            policy.isUrlAllowed("https://example.com", clockAt("2026-01-01T16:00:00Z"))
-        ).isFalse()
-    }
-
     @Test
-    fun `unsaved sites are allowed during midday browsing window`() {
-        assertThat(
-            policy.isUrlAllowed("https://unsaved.example", clockAt("2026-01-01T04:30:00Z"))
-        ).isTrue()
+    fun `blocked page explains the fixed blacklist and escapes host markup`() {
+        val html = policy.blockedPageHtml("https://%3Cscript%3E.example.org")
+        assertThat(html).contains("Site blocked", "built-in blacklist", "&lt;script&gt;")
+        assertThat(html).doesNotContain("<script>", "12:00", "22:00", "allowed-sites")
     }
-
-    @Test
-    fun `saved domain and its subdomains are allowed outside editing window`() {
-        policy.allowUrl("https://www.example.com/page", clockAt("2026-01-01T14:30:00Z"))
-        val closedClock = clockAt("2026-01-01T16:00:00Z")
-
-        assertThat(policy.isUrlAllowed("https://example.com", closedClock)).isTrue()
-        assertThat(policy.isUrlAllowed("https://news.example.com", closedClock)).isTrue()
-        assertThat(policy.isUrlAllowed("https://example.org", closedClock)).isFalse()
-    }
-
-    @Test
-    fun `built in domains and their subdomains are always allowed`() {
-        val closedClock = clockAt("2026-01-01T16:00:00Z")
-
-        assertThat(policy.isUrlAllowed("https://sitson.pages.dev/path", closedClock)).isTrue()
-        assertThat(policy.isUrlAllowed("https://sixfeet6.github.io/app", closedClock)).isTrue()
-        assertThat(policy.isUrlAllowed("https://my.lzu.edu.cn/portal", closedClock)).isTrue()
-        assertThat(policy.isUrlAllowed("https://login.my.lzu.edu.cn/", closedClock)).isTrue()
-        assertThat(policy.isUrlAllowed("https://notmy.lzu.edu.cn/", closedClock)).isFalse()
-    }
-
-    @Test
-    fun `internal browser URLs remain allowed`() {
-        val closedClock = clockAt("2026-01-01T16:00:00Z")
-
-        assertThat(policy.isUrlAllowed("about:blank", closedClock)).isTrue()
-        assertThat(policy.isUrlAllowed("file:///internal/homepage.html", closedClock)).isTrue()
-    }
-
-    @Test
-    fun `direct file downloads are allowed from unsaved domains`() {
-        val closedClock = clockAt("2026-01-01T16:00:00Z")
-
-        assertThat(
-            policy.isUrlAllowed("https://files.example.org/report.pdf", closedClock)
-        ).isTrue()
-        assertThat(
-            policy.isUrlAllowed("https://files.example.org/archive.ZIP?source=mail", closedClock)
-        ).isTrue()
-        assertThat(
-            policy.isUrlAllowed("https://files.example.org/ordinary-page", closedClock)
-        ).isFalse()
-    }
-
-    private fun clockAt(instant: String): Clock =
-        Clock.fixed(Instant.parse(instant), ZoneOffset.UTC)
 }

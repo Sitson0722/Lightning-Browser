@@ -139,25 +139,24 @@ fun TabsBottomSheet(
     presenter: BrowserPresenter,
 ) {
     val lazyListState = rememberLazyListState()
-    if (browserViewState.scrollToTab != -1) {
-        LaunchedEffect(browserViewState.scrollToTab) {
-            lazyListState.scrollToItem(browserViewState.scrollToTab)
+    val scrollToTab = browserViewState.scrollToTab
+    if (scrollToTab != -1) {
+        LaunchedEffect(scrollToTab, browserViewState.tabs.size) {
+            if (scrollToTab in browserViewState.tabs.indices) {
+                lazyListState.scrollToItem(scrollToTab)
+            }
             presenter.onEvent(BrowserUiEvent.TabScroll)
         }
     }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var showBottomSheet by remember { mutableStateOf(browserViewState.openTabs) }
-    if (showBottomSheet != browserViewState.openTabs) {
-        if (showBottomSheet) {
-            LaunchedEffect(null) {
-                sheetState.hide()
-                showBottomSheet = false
-            }
-        } else {
+    LaunchedEffect(browserViewState.openTabs) {
+        if (browserViewState.openTabs) {
+            // ModalBottomSheet shows itself after its layout anchors are available.
             showBottomSheet = true
-            LaunchedEffect(null) {
-                sheetState.show()
-            }
+        } else {
+            sheetState.hide()
+            showBottomSheet = false
         }
     }
     if (!showBottomSheet) return

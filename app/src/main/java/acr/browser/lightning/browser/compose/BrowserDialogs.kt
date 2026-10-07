@@ -131,9 +131,7 @@ fun BrowserDialogs(
             browserPresenter.onEvent(BrowserUiEvent.ConfirmOpenLocalFile(it))
         }
 
-        is BrowserViewState.Dialogs.PageTools -> PageToolsSheet(
-            areAdsAllowed = dialog.areAdsAllowed,
-            shouldShowAdBlockOption = dialog.shouldShowAdBlockOption,
+        BrowserViewState.Dialogs.PageTools -> PageToolsSheet(
             presenter = browserPresenter,
         )
 

@@ -2,9 +2,7 @@ package acr.browser.lightning.browser
 
 import acr.browser.lightning.BrowserUiEvent
 import acr.browser.lightning.R
-import acr.browser.lightning.adblock.allowlist.AllowListModel
 import acr.browser.lightning.browser.history.HistoryRecord
-import acr.browser.lightning.browser.access.SiteAccessPolicy
 import acr.browser.lightning.browser.keys.KeyCombo
 import acr.browser.lightning.browser.menu.MenuSelection
 import acr.browser.lightning.browser.notification.TabCountNotifier
@@ -48,7 +46,6 @@ import acr.browser.lightning.utils.isBookmarkUrl
 import acr.browser.lightning.utils.isDownloadsUrl
 import acr.browser.lightning.utils.isHistoryUrl
 import acr.browser.lightning.utils.isSpecialUrl
-import androidx.activity.result.ActivityResult
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.net.toUri
 import kotlinx.coroutines.CoroutineScope
@@ -89,8 +86,6 @@ class BrowserPresenter @Inject constructor(
     private val searchBoxModel: SearchBoxModel,
     private val searchEngineProvider: SearchEngineProvider,
     private val historyPageFactory: HistoryPageFactory,
-    private val allowListModel: AllowListModel,
-    private val siteAccessPolicy: SiteAccessPolicy,
     private val tabCountNotifier: TabCountNotifier,
     @IncognitoMode private val incognitoMode: Boolean,
     coroutineDispatchers: CoroutineDispatchers,
@@ -107,11 +102,11 @@ class BrowserPresenter @Inject constructor(
 
     private var view: BrowserContract.View? = null
     private var currentTab: TabModel? = null
+    private val downloadPageOrigins = mutableMapOf<Int, Int>()
     private var currentFolder: Bookmark.Folder = Bookmark.Folder.Root
     private var currentBookmarks: List<Bookmark> = emptyList()
     private var pendingAction: BrowserContract.Action.LoadUrl? = null
     private var pendingSnackbarAction: EphemeralAction? = null
-    private var pendingAllowlistConfig: ByteArray? = null
     private var isCustomViewShowing = false
 
     private val tabJobs: MutableList<Job> = mutableListOf()
@@ -166,7 +161,7 @@ class BrowserPresenter @Inject constructor(
                     isRootFolder = true
                 )
             }
-            selectTab(model.selectTab(lastTab.id))
+            selectTabById(lastTab.id)
         }
 
         browserCoroutineScope.launch {
@@ -199,6 +194,7 @@ class BrowserPresenter @Inject constructor(
      */
     fun onViewDetached() {
         view = null
+        model.tabsList.forEach { it.cancelFileUpload() }
 
         tabJobs.forEach { it.cancel() }
         allTabsJobMap.values.forEach { it.cancel() }
@@ -223,11 +219,7 @@ class BrowserPresenter @Inject constructor(
             when (browserUiEvent) {
                 BrowserUiEvent.SnackbarActionPerformed -> onSnackbarActionPerformed()
                 BrowserUiEvent.SnackbarDismissed -> onSnackbarDismissed()
-                is BrowserUiEvent.FileChooserResult -> onFileChooserResult(browserUiEvent.activityResult)
                 is BrowserUiEvent.QrScanResult -> onQrScanResult(browserUiEvent.content)
-                is BrowserUiEvent.ImportAllowlistResult -> onImportAllowlistResult(browserUiEvent.content)
-                is BrowserUiEvent.ConfirmAllowlistImport ->
-                    onConfirmAllowlistImport(browserUiEvent.allow)
                 is BrowserUiEvent.CopyScannedText -> {
                     navigator.copyPageLink(browserUiEvent.content)
                     showSnackbar(resourceProvider.stringResource(R.string.message_scan_text_copied))
@@ -292,7 +284,6 @@ class BrowserPresenter @Inject constructor(
                 )
 
                 BrowserUiEvent.StarClick -> onStarClick()
-                BrowserUiEvent.ToggleAdBlockingClick -> onToggleAdBlocking()
                 BrowserUiEvent.ToggleDesktopAgentClick -> onToggleDesktopAgent()
                 BrowserUiEvent.ToolsClick -> onToolsClick()
                 is BrowserUiEvent.BookmarkLongClick -> onBookmarkLongClick(browserUiEvent.index)
@@ -368,6 +359,11 @@ class BrowserPresenter @Inject constructor(
         }
     }
 
+    private suspend fun selectTabById(id: Int, focusTab: Boolean = true) {
+        val selected = model.selectTab(id) ?: return
+        selectTab(selected, focusTab)
+    }
+
     private suspend fun selectTab(tabModel: TabModel?, focusTab: Boolean = true) {
         if (currentTab == tabModel) {
             state.updateSelf { copy(openTabs = false) }
@@ -438,7 +434,7 @@ class BrowserPresenter @Inject constructor(
                     themeColor = themeColor,
                     isRefresh = progress == 100,
                     isForwardEnabled = canGoForward,
-                    isBackEnabled = canGoBack,
+                    isBackEnabled = canGoBack || url.isDownloadsUrl(),
                     sslState = sslState,
                     progress = progress,
                     isBookmarked = isBookmark,
@@ -496,12 +492,6 @@ class BrowserPresenter @Inject constructor(
         }
 
         tabJobs += browserCoroutineScope.launch {
-            tab.fileChooserRequests().collectLatest {
-                view?.showFileChooser(it)
-            }
-        }
-
-        tabJobs += browserCoroutineScope.launch {
             tab.showCustomViewRequests().collectLatest {
                 state.updateSelf { copy(showCustomView = true) }
                 isCustomViewShowing = true
@@ -529,6 +519,14 @@ class BrowserPresenter @Inject constructor(
         forEach { tabModel ->
             if (allTabsJobMap[tabModel.id] == null) {
                 allTabsJobMap[tabModel.id] = browserCoroutineScope.launch {
+                    // Uploads remain bound to this tab while another tab is selected.
+                    launch {
+                        tabModel.fileChooserRequests().collectLatest { request ->
+                            val attachedView = view
+                            if (attachedView == null) request.cancel()
+                            else attachedView.showFileChooser(request)
+                        }
+                    }
                     combineMultiple(
                         tabModel.titleChanges(),
                         tabModel.faviconChanges(),
@@ -620,11 +618,17 @@ class BrowserPresenter @Inject constructor(
                 tabType = TabModel.Type.POP_UP
             )
 
-            MenuSelection.DOWNLOADS -> createNewTabAndSelect(
-                tabInitializer = downloadPageInitializer,
-                shouldSelect = true,
-                tabType = TabModel.Type.POP_UP
-            )
+            MenuSelection.DOWNLOADS -> {
+                val originId = currentTab?.id
+                createNewTabAndSelect(
+                    tabInitializer = downloadPageInitializer,
+                    shouldSelect = true,
+                    tabType = TabModel.Type.POP_UP
+                )
+                currentTab?.id?.let { downloadId ->
+                    originId?.let { downloadPageOrigins[downloadId] = it }
+                }
+            }
 
             MenuSelection.FIND -> {
                 currentTab?.find("")
@@ -645,24 +649,6 @@ class BrowserPresenter @Inject constructor(
                 ?.let { showAddBookmarkDialog() }
 
             MenuSelection.SCAN_QR -> view?.showQrScanner()
-
-            MenuSelection.ALLOW_SITE -> {
-                val message = when (val result = siteAccessPolicy.allowUrl(currentTab?.url.orEmpty())) {
-                    is SiteAccessPolicy.AddResult.Added -> resourceProvider.stringResource(
-                        R.string.message_site_allowed,
-                        result.domain
-                    )
-                    SiteAccessPolicy.AddResult.WindowClosed -> resourceProvider.stringResource(
-                        R.string.message_allow_window_closed
-                    )
-                    SiteAccessPolicy.AddResult.InvalidUrl -> resourceProvider.stringResource(
-                        R.string.message_allow_invalid_url
-                    )
-                }
-                showSnackbar(message)
-            }
-
-            MenuSelection.IMPORT_ALLOWLIST -> view?.showAllowlistImporter()
 
             MenuSelection.SETTINGS -> navigator.openSettings()
             MenuSelection.BACK -> onBackClick()
@@ -693,12 +679,12 @@ class BrowserPresenter @Inject constructor(
         val tab = model.createTab(tabInitializer, tabType = tabType)
         state.updateSelf { updateTabViewState() }
         if (shouldSelect) {
-            selectTab(model.selectTab(tab.id))
+            selectTabById(tab.id)
         } else {
             showSnackbar(
                 message = resourceProvider.stringResource(R.string.result_open_background_tab),
                 action = EphemeralAction(resourceProvider.stringResource(R.string.action_open)) {
-                    selectTab(model.selectTab(tab.id))
+                    selectTabById(tab.id)
                 }
             )
         }
@@ -761,7 +747,7 @@ class BrowserPresenter @Inject constructor(
 
     private suspend fun onTabClick(id: Int) {
         if (model.tabsList.none { it.id == id }) return
-        selectTab(model.selectTab(id))
+        selectTabById(id)
     }
 
     private suspend fun onTabLongClick(id: Int) {
@@ -791,6 +777,7 @@ class BrowserPresenter @Inject constructor(
         val currentTabId = currentTab?.id
         val needToSelectNextTab = id == currentTabId
 
+        downloadPageOrigins.remove(id)
         model.deleteTab(id)
         state.updateSelf { updateTabViewState() }
         if (needToSelectNextTab) {
@@ -799,7 +786,7 @@ class BrowserPresenter @Inject constructor(
             } ?: model.tabsList.firstOrNull()?.id
             nextTabId?.let {
                 val shouldClose = currentTab?.tabType == TabModel.Type.EPHEMERAL
-                selectTab(model.selectTab(it), focusTab = false)
+                selectTabById(it, focusTab = false)
                 if (shouldClose) {
                     navigator.backgroundBrowser()
                 } else {
@@ -844,6 +831,7 @@ class BrowserPresenter @Inject constructor(
             }
 
             currentTab?.canGoBack() == true -> currentTab?.goBack()
+            currentTab?.url.isDownloadsUrl() -> closeDownloadsPage()
             currentTab?.canGoBack() == false -> if (incognitoMode) {
                 currentTab?.id?.let {
                     state.updateSelf { copy(dialog = BrowserViewState.Dialogs.CloseBrowser(it)) }
@@ -860,10 +848,24 @@ class BrowserPresenter @Inject constructor(
         }
     }
 
-    private fun onBackClick() {
+    private suspend fun onBackClick() {
         if (currentTab?.canGoBack() == true) {
             currentTab?.goBack()
+        } else if (currentTab?.url.isDownloadsUrl()) {
+            closeDownloadsPage()
         }
+    }
+
+    private suspend fun closeDownloadsPage() {
+        val downloadTab = currentTab ?: return
+        val originId = downloadPageOrigins.remove(downloadTab.id)
+        model.returnFromDownloads(
+            downloadTab.id,
+            originId,
+            select = { selectTabById(it, focusTab = false) },
+            openHome = { createNewTabAndSelect(homePageInitializer, shouldSelect = true) },
+        )
+        state.updateSelf { updateTabViewState() }
     }
 
     private fun onForwardClick() {
@@ -1060,31 +1062,12 @@ class BrowserPresenter @Inject constructor(
     }
 
     private suspend fun onToolsClick() {
-        val currentUrl = currentTab?.url ?: return
-        state.updateSelf {
-            copy(
-                dialog = BrowserViewState.Dialogs.PageTools(
-                    areAdsAllowed = allowListModel.isUrlAllowedAds(currentUrl),
-                    shouldShowAdBlockOption = !currentUrl.isSpecialUrl()
-                )
-            )
-        }
+        state.updateSelf { copy(dialog = BrowserViewState.Dialogs.PageTools) }
     }
 
     private suspend fun onToggleDesktopAgent() {
         onDialogDismissed()
         currentTab?.toggleDesktopAgent()
-        currentTab?.reload()
-    }
-
-    private suspend fun onToggleAdBlocking() {
-        onDialogDismissed()
-        val currentUrl = currentTab?.url ?: return
-        if (allowListModel.isUrlAllowedAds(currentUrl)) {
-            allowListModel.removeUrlFromAllowList(currentUrl)
-        } else {
-            allowListModel.addUrlToAllowList(currentUrl)
-        }
         currentTab?.reload()
     }
 
@@ -1423,7 +1406,7 @@ class BrowserPresenter @Inject constructor(
                     model.deleteTab(it.id)
                     state.updateSelf { updateTabViewState() }
                     if (currentTabId != id) {
-                        selectTab(model.selectTab(id))
+                        selectTabById(id)
                     }
                 }
             }
@@ -1516,52 +1499,14 @@ class BrowserPresenter @Inject constructor(
         onDialogDismissed()
     }
 
-    private fun onFileChooserResult(activityResult: ActivityResult) {
-        currentTab?.handleFileChooserResult(activityResult)
-    }
-
     private suspend fun onQrScanResult(content: String) {
-        val value = content.trim()
-        val uri = value.toUri()
-        if ((uri.scheme == "http" || uri.scheme == "https") && !uri.host.isNullOrBlank()) {
-            onNewAction(BrowserContract.Action.LoadUrl(value))
+        if (content.isBlank()) return
+        val url = scannedUrl(content)
+        if (url != null) {
+            onNewAction(BrowserContract.Action.LoadUrl(url))
         } else {
             view?.showScannedText(content)
         }
-    }
-
-    private suspend fun onImportAllowlistResult(content: ByteArray?) {
-        if (content == null) {
-            showSnackbar(resourceProvider.stringResource(R.string.message_allowlist_read_failed))
-            return
-        }
-        when (val result = siteAccessPolicy.inspectConfig(content)) {
-            is SiteAccessPolicy.ImportResult.Ready -> {
-                pendingAllowlistConfig = content
-                view?.confirmAllowlistImport(result.added, result.existing)
-            }
-            SiteAccessPolicy.ImportResult.InvalidFile ->
-                showSnackbar(resourceProvider.stringResource(R.string.message_allowlist_invalid_file))
-            SiteAccessPolicy.ImportResult.SaveFailed -> Unit
-        }
-    }
-
-    private suspend fun onConfirmAllowlistImport(allow: Boolean) {
-        val content = pendingAllowlistConfig
-        pendingAllowlistConfig = null
-        if (!allow || content == null) return
-        val message = when (val result = siteAccessPolicy.importConfig(content)) {
-            is SiteAccessPolicy.ImportResult.Ready -> resourceProvider.stringResource(
-                R.string.message_allowlist_imported,
-                result.added,
-                result.existing
-            )
-            SiteAccessPolicy.ImportResult.InvalidFile ->
-                resourceProvider.stringResource(R.string.message_allowlist_invalid_file)
-            SiteAccessPolicy.ImportResult.SaveFailed ->
-                resourceProvider.stringResource(R.string.message_allowlist_save_failed)
-        }
-        showSnackbar(message)
     }
 
     private suspend fun onSnackbarDismissed() {
@@ -1585,7 +1530,7 @@ class BrowserPresenter @Inject constructor(
         val tab = model.reopenTab()
         state.updateSelf { updateTabViewState() }
         if (tab != null) {
-            selectTab(model.selectTab(tab.id))
+            selectTabById(tab.id)
         }
     }
 

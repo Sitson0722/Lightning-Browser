@@ -8,7 +8,6 @@ import acr.browser.lightning.database.Bookmark
 import acr.browser.lightning.database.HistoryEntry
 import acr.browser.lightning.database.WebPage
 import acr.browser.lightning.database.downloads.DownloadEntry
-import androidx.activity.result.ActivityResult
 
 /**
  * Events triggered by the browser's UI.
@@ -189,11 +188,6 @@ sealed interface BrowserUiEvent {
     data object ToggleDesktopAgentClick : BrowserUiEvent
 
     /**
-     * Call when the user chooses to toggle ad blocking on/off for the current web page.
-     */
-    data object ToggleAdBlockingClick : BrowserUiEvent
-
-    /**
      * Call when the user clicks on the star icon to add a bookmark for the current page or remove
      * the existing one.
      */
@@ -316,15 +310,9 @@ sealed interface BrowserUiEvent {
     ) : BrowserUiEvent
 
     /**
-     * Call when the user has selected a file from the file chooser to upload.
+     * Call when the camera scanner returns decoded QR content.
      */
-    data class FileChooserResult(val activityResult: ActivityResult) : BrowserUiEvent
-
     data class QrScanResult(val content: String) : BrowserUiEvent
-
-    data class ImportAllowlistResult(val content: ByteArray?) : BrowserUiEvent
-
-    data class ConfirmAllowlistImport(val allow: Boolean) : BrowserUiEvent
 
     data class CopyScannedText(val content: String) : BrowserUiEvent
 

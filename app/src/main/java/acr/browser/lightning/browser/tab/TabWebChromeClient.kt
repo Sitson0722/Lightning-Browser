@@ -13,7 +13,6 @@ import acr.browser.lightning.favicon.FaviconModel
 import acr.browser.lightning.preference.UserPreferencesDataStore
 import acr.browser.lightning.utils.Utils
 import android.Manifest
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
@@ -24,7 +23,6 @@ import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
-import androidx.activity.result.ActivityResult
 import androidx.appcompat.app.AlertDialog
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.Density
@@ -39,8 +37,10 @@ import com.permissionx.guolindev.PermissionX
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -98,7 +98,8 @@ class TabWebChromeClient @AssistedInject constructor(
     /**
      * Emits requests to open the file chooser for upload.
      */
-    val fileChooserSharedFlow: MutableSharedFlow<Intent> = MutableSharedFlow()
+    private val fileChooserChannel = Channel<FileUploadRequest>(Channel.BUFFERED)
+    val fileChooserRequests = fileChooserChannel.receiveAsFlow()
 
     /**
      * Emits requests to show a custom view (i.e. full screen video).
@@ -110,20 +111,18 @@ class TabWebChromeClient @AssistedInject constructor(
      */
     val hideCustomViewObservable: MutableSharedFlow<Unit> = MutableSharedFlow()
 
-    private var filePathCallback: ValueCallback<Array<Uri>>? = null
+    private var fileUploadRequest: FileUploadRequest? = null
     private var customViewCallback: CustomViewCallback? = null
 
 
     /**
-     * Handle the [activityResult] that was returned by the file chooser.
+     * Cancel uploads before their originating WebView is destroyed.
      */
-    fun onResult(activityResult: ActivityResult) {
-        val resultCode = activityResult.resultCode
-        val intent = activityResult.data
-        val result = FileChooserParams.parseResult(resultCode, intent)
-
-        filePathCallback?.onReceiveValue(result)
-        filePathCallback = null
+    fun cancelFileUpload() {
+        val request = fileUploadRequest
+        fileUploadRequest = null
+        fileChooserChannel.close()
+        request?.cancel()
     }
 
     /**
@@ -218,13 +217,24 @@ class TabWebChromeClient @AssistedInject constructor(
         filePathCallback: ValueCallback<Array<Uri>>,
         fileChooserParams: FileChooserParams
     ): Boolean {
-        // Ensure that previously set callbacks are resolved.
-        this.filePathCallback?.onReceiveValue(null)
-        this.filePathCallback = null
-
-        this.filePathCallback = filePathCallback
-        tabCoroutineScope.launch {
-            fileChooserSharedFlow.emit(fileChooserParams.createIntent())
+        // Keep an existing picker bound to its original request, even if the page asks again.
+        if (fileUploadRequest?.isPending == true) {
+            filePathCallback.onReceiveValue(null)
+            return true
+        }
+        val intent = try {
+            fileChooserParams.createIntent()
+        } catch (_: IllegalArgumentException) {
+            filePathCallback.onReceiveValue(null)
+            return true
+        } catch (_: SecurityException) {
+            filePathCallback.onReceiveValue(null)
+            return true
+        }
+        val request = FileUploadRequest(intent, filePathCallback)
+        fileUploadRequest = request
+        if (fileChooserChannel.trySend(request).isFailure) {
+            request.cancel()
         }
         return true
     }

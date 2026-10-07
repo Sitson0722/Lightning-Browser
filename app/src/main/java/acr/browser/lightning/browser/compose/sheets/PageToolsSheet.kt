@@ -11,8 +11,6 @@ import androidx.compose.ui.res.stringResource
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PageToolsSheet(
-    areAdsAllowed: Boolean,
-    shouldShowAdBlockOption: Boolean,
     presenter: BrowserPresenter,
 ) {
     ListItemSheet(
@@ -23,21 +21,6 @@ fun PageToolsSheet(
                 title = R.string.dialog_toggle_desktop,
                 isConditionMet = true,
                 onClick = { presenter.onEvent(BrowserUiEvent.ToggleDesktopAgentClick) }
-            ),
-            DialogItem(
-                icon = R.drawable.ic_block,
-                colorTint = if (areAdsAllowed) {
-                    R.color.error_red
-                } else {
-                    null
-                },
-                title = if (areAdsAllowed) {
-                    R.string.dialog_adblock_enable_for_site
-                } else {
-                    R.string.dialog_adblock_disable_for_site
-                },
-                isConditionMet = shouldShowAdBlockOption,
-                onClick = { presenter.onEvent(BrowserUiEvent.ToggleAdBlockingClick) }
             )
         ),
         presenter = presenter

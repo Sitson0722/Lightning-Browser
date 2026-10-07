@@ -1,4 +1,6 @@
 import app.cash.licensee.SpdxId
+import java.net.IDN
+import java.util.Locale
 
 plugins {
     id("com.android.application")
@@ -10,6 +12,49 @@ plugins {
     id("com.anthonycr.plugins.mockingbird") version "3.3.0"
     id("app.cash.licensee") version "1.14.1"
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10"
+}
+
+/** Validates the repository list and copies it unchanged into the generated APK assets. */
+@CacheableTask
+abstract class GenerateBlacklistAssets : DefaultTask() {
+    @get:InputFile
+    @get:PathSensitive(PathSensitivity.NONE)
+    abstract val blacklistFile: RegularFileProperty
+
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val input = blacklistFile.get().asFile
+        input.readLines(Charsets.UTF_8).forEachIndexed { index, line ->
+            val value = line.removePrefix("\uFEFF").substringBefore('#').trim()
+            if (value.isNotEmpty()) {
+                try {
+                    require(value.none { it == '/' || it == ':' || it.isWhitespace() })
+                    val domain = IDN.toASCII(value.trimEnd('.'), IDN.USE_STD3_ASCII_RULES)
+                        .lowercase(Locale.ROOT)
+                    require(domain.length <= 253 && '.' in domain)
+                    require(domain.split('.').all { label ->
+                        label.isNotEmpty() && label.length <= 63 &&
+                            label.first() != '-' && label.last() != '-'
+                    })
+                } catch (exception: IllegalArgumentException) {
+                    throw GradleException(
+                        "${input.name}:${index + 1}: invalid domain '$value'", exception
+                    )
+                }
+            }
+        }
+        val output = outputDirectory.get().asFile
+        output.mkdirs()
+        input.copyTo(output.resolve("blacklist.txt"), overwrite = true)
+    }
+}
+
+val generateBlacklistAssets = tasks.register<GenerateBlacklistAssets>("generateBlacklistAssets") {
+    blacklistFile.set(layout.settingsDirectory.file("Distractions websites.txt"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/blacklistAssets"))
 }
 
 android {
@@ -41,6 +86,10 @@ android {
         viewBinding = true
         buildConfig = true
         compose = true
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 
     buildTypes {
@@ -104,6 +153,9 @@ android {
 
 androidComponents {
     onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            generateBlacklistAssets, GenerateBlacklistAssets::outputDirectory
+        )
         variant.runtimeConfiguration.resolutionStrategy.activateDependencyLocking()
     }
 }

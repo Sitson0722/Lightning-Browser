@@ -27,10 +27,12 @@ class TabPager @Inject constructor(
     /**
      * Select the tab with the provided [id] to be displayed by the pager.
      */
-    fun selectTab(id: Int) {
+    fun selectTab(id: Int): Boolean {
+        // Reject stale clicks before detaching the currently displayed page.
+        val webView = webViews[id]?.value ?: return false
         container.removeWebViews(excludeId = id)
-        val webView = webViews[id]!!.value
         if (webView.parent != container) {
+            (webView.parent as? ViewGroup)?.removeView(webView)
             container.addView(
                 webView,
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -41,6 +43,7 @@ class TabPager @Inject constructor(
         webViewLongPressHandler.configure(webView, onLongClick = {
             longPressListener?.invoke(id, it)
         })
+        return true
     }
 
     /**
@@ -77,6 +80,7 @@ class TabPager @Inject constructor(
         children
             .filterIsInstance<WebView>()
             .filter { it.id != excludeId }
+            .toList()
             .forEach(container::removeView)
     }
 

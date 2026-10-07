@@ -2,86 +2,55 @@ package acr.browser.lightning.browser.access
 
 import android.app.Application
 import android.net.Uri
-import java.net.IDN
-import java.time.Clock
-import java.time.LocalTime
-import java.time.ZoneOffset
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import java.io.ByteArrayInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * Restricts top-level browsing to saved domains outside the daily unrestricted windows.
- *
- * The editing window is fixed to UTC+8 and does not follow the device time zone.
- */
+/** A fixed blacklist loaded completely before any tab can start browsing. */
 @Singleton
-class SiteAccessPolicy @Inject constructor(
-    application: Application,
-) {
-    private val preferences = application.getSharedPreferences(PREFERENCES_NAME, 0)
+class SiteAccessPolicy internal constructor(private val blacklist: DomainBlacklist) {
+    @Inject
+    constructor(application: Application) : this(
+        application.assets.open("blacklist.txt")
+            .bufferedReader(Charsets.UTF_8).use { DomainBlacklist.parse(it) }
+    )
 
-    fun isEditingWindowOpen(clock: Clock = Clock.systemUTC()): Boolean {
-        val time = LocalTime.now(clock.withZone(UTC_PLUS_EIGHT))
-        return !time.isBefore(EDITING_WINDOW_START) && time.isBefore(EDITING_WINDOW_END)
+    fun isUrlAllowed(url: String): Boolean {
+        val uri = Uri.parse(url)
+        if (!uri.scheme.equals("http", ignoreCase = true) &&
+            !uri.scheme.equals("https", ignoreCase = true)
+        ) return true
+        return !blacklist.blocksHost(uri.host.orEmpty())
     }
 
-    fun isUnrestrictedBrowsingWindowOpen(clock: Clock = Clock.systemUTC()): Boolean {
-        val time = LocalTime.now(clock.withZone(UTC_PLUS_EIGHT))
-        return isWithin(time, MIDDAY_BROWSING_WINDOW_START, MIDDAY_BROWSING_WINDOW_END) ||
-            isWithin(time, EDITING_WINDOW_START, EDITING_WINDOW_END)
-    }
-
-    fun isUrlAllowed(url: String, clock: Clock = Clock.systemUTC()): Boolean {
-        if (isDownloadUrl(url)) return true
-        val host = normalizedHost(url) ?: return true
-        if (isUnrestrictedBrowsingWindowOpen(clock)) return true
-
-        return (BUILT_IN_ALLOWED_DOMAINS + allowedDomains()).any { allowedDomain ->
-            host == allowedDomain || host.endsWith(".$allowedDomain")
-        }
-    }
-
-    /** Saves the HTTP(S) domain when the editing window is open. */
-    fun allowUrl(url: String, clock: Clock = Clock.systemUTC()): AddResult {
-        if (!isEditingWindowOpen(clock)) return AddResult.WindowClosed
-        val host = normalizedHost(url) ?: return AddResult.InvalidUrl
-        val updatedDomains = allowedDomains() + host.removePrefix("www.")
-        preferences.edit().putStringSet(ALLOWED_DOMAINS, updatedDomains).apply()
-        return AddResult.Added(host.removePrefix("www."))
-    }
-
-    fun inspectConfig(file: ByteArray): ImportResult {
-        val imported = decodeDomains(file) ?: return ImportResult.InvalidFile
-        val existing = allowedDomains()
-        val added = imported - existing
-        return ImportResult.Ready(added = added.size, existing = imported.size - added.size)
-    }
-
-    /** Imports a signed configuration at any time and merges it with the existing domains. */
-    fun importConfig(file: ByteArray): ImportResult {
-        val imported = decodeDomains(file) ?: return ImportResult.InvalidFile
-        val existing = allowedDomains()
-        val added = imported - existing
-        val saved = preferences.edit().putStringSet(ALLOWED_DOMAINS, existing + imported).commit()
-        return if (saved) {
-            ImportResult.Ready(added = added.size, existing = imported.size - added.size)
+    /** The same response policy is used for WebView and service worker requests. */
+    fun interceptRequest(request: WebResourceRequest): WebResourceResponse? {
+        val url = request.url.toString()
+        if (isUrlAllowed(url)) return null
+        val content = if (request.isForMainFrame) {
+            blockedPageHtml(url).toByteArray(Charsets.UTF_8)
         } else {
-            ImportResult.SaveFailed
+            byteArrayOf()
         }
-    }
-
-    private fun decodeDomains(file: ByteArray): Set<String>? = try {
-        AllowlistConfigCodec.decode(file).map(::normalizedDomain).toSet().takeIf { it.isNotEmpty() }
-    } catch (_: Exception) {
-        null
+        return WebResourceResponse(
+            if (request.isForMainFrame) "text/html" else "text/plain",
+            "utf-8",
+            403,
+            "Forbidden",
+            mapOf("Cache-Control" to "no-store"),
+            ByteArrayInputStream(content)
+        )
     }
 
     fun blockedPageHtml(url: String): String {
-        val host = normalizedHost(url).orEmpty().escapeHtml()
+        val host = Uri.parse(url).host.orEmpty().escapeHtml()
         return """
             <!doctype html>
             <html>
               <head>
+                <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
                 <style>
                   body { font-family: sans-serif; margin: 3rem 1.5rem; color: #202124; }
@@ -90,88 +59,14 @@ class SiteAccessPolicy @Inject constructor(
                 </style>
               </head>
               <body>
-                <h1>Site blocked</h1>
-                <p><strong>$host</strong> is not on your allowed-sites list.</p>
-                <p>You can browse freely from 12:00 to 13:00 and from 22:00 to 23:00 (UTC+8). Sites can be added to your list during the 22:00 to 23:00 window.</p>
+                <h1>该网站已被封锁 / Site blocked</h1>
+                <p><strong>$host</strong></p>
+                <p>此网站在内置黑名单中。 / This site is on the built-in blacklist.</p>
               </body>
             </html>
         """.trimIndent()
     }
 
-    private fun allowedDomains(): Set<String> =
-        preferences.getStringSet(ALLOWED_DOMAINS, emptySet())?.toSet().orEmpty()
-
-    private fun isWithin(time: LocalTime, start: LocalTime, end: LocalTime): Boolean =
-        !time.isBefore(start) && time.isBefore(end)
-
-    private fun normalizedHost(url: String): String? {
-        val uri = Uri.parse(url)
-        if (uri.scheme != "http" && uri.scheme != "https") return null
-        return uri.host?.lowercase()?.trimEnd('.')?.takeIf(String::isNotBlank)
-    }
-
-    private fun normalizedDomain(value: String): String {
-        if (value != value.trim() || value.any { it == '/' || it == ':' || it.isWhitespace() }) {
-            throw IllegalArgumentException("Domain contains invalid characters")
-        }
-        val ascii = IDN.toASCII(value.trimEnd('.'), IDN.USE_STD3_ASCII_RULES)
-            .lowercase()
-            .removePrefix("www.")
-        require(ascii.isNotBlank() && ascii.length <= 253 && '.' in ascii)
-        require(ascii.split('.').all { label ->
-            label.isNotEmpty() && label.length <= 63 &&
-                label.first() != '-' && label.last() != '-'
-        })
-        return ascii
-    }
-
-    /**
-     * Identifies direct links to common downloadable file types. These links are always allowed so
-     * WebView can hand them to its download listener, even when their host is not allow-listed.
-     */
-    private fun isDownloadUrl(url: String): Boolean {
-        val uri = Uri.parse(url)
-        if (uri.scheme != "http" && uri.scheme != "https") return false
-        val extension = uri.lastPathSegment
-            ?.substringAfterLast('.', missingDelimiterValue = "")
-            ?.lowercase()
-            .orEmpty()
-        return extension in DOWNLOAD_EXTENSIONS
-    }
-
-    sealed interface AddResult {
-        data class Added(val domain: String) : AddResult
-        data object WindowClosed : AddResult
-        data object InvalidUrl : AddResult
-    }
-
-    sealed interface ImportResult {
-        data class Ready(val added: Int, val existing: Int) : ImportResult
-        data object InvalidFile : ImportResult
-        data object SaveFailed : ImportResult
-    }
-
     private fun String.escapeHtml(): String =
         replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-    private companion object {
-        const val PREFERENCES_NAME = "site_access_policy"
-        const val ALLOWED_DOMAINS = "allowed_domains"
-        val UTC_PLUS_EIGHT: ZoneOffset = ZoneOffset.ofHours(8)
-        val MIDDAY_BROWSING_WINDOW_START: LocalTime = LocalTime.of(12, 0)
-        val MIDDAY_BROWSING_WINDOW_END: LocalTime = LocalTime.of(13, 0)
-        val EDITING_WINDOW_START: LocalTime = LocalTime.of(22, 0)
-        val EDITING_WINDOW_END: LocalTime = LocalTime.of(23, 0)
-        val BUILT_IN_ALLOWED_DOMAINS: Set<String> = setOf(
-            "sitson.pages.dev",
-            "sixfeet6.github.io",
-            "my.lzu.edu.cn",
-        )
-        val DOWNLOAD_EXTENSIONS: Set<String> = setOf(
-            "7z", "apk", "avi", "csv", "doc", "docx", "epub", "gz", "jpeg", "jpg",
-            "m4a", "mkv", "mov", "mp3", "mp4", "odp", "ods", "odt", "pdf", "png",
-            "ppt", "pptx", "rar", "rtf", "tar", "tgz", "txt", "wav", "webm", "webp",
-            "xls", "xlsx", "xml", "zip"
-        )
-    }
 }

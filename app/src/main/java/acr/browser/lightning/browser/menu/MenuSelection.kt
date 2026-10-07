@@ -15,8 +15,6 @@ enum class MenuSelection {
     BOOKMARKS,
     ADD_BOOKMARK,
     SCAN_QR,
-    ALLOW_SITE,
-    IMPORT_ALLOWLIST,
     SETTINGS,
     BACK,
     FORWARD

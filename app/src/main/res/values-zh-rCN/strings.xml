@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <string name="message_blacklisted_site">该网站已被封锁。</string>
     <string name="app_name">Lightning</string>
     <string name="action_new_tab">新建标签页</string>
     <string name="action_share">分享</string>
@@ -338,4 +339,14 @@
     <string name="message_allowlist_invalid_file">配置文件已损坏、不受信任或版本不受支持</string>
     <string name="message_allowlist_read_failed">无法读取所选配置文件</string>
     <string name="message_allowlist_save_failed">无法保存导入的网站</string>
+    <string name="message_file_chooser_unavailable">无法打开文件选择器，请重试。</string>
+    <string name="message_qr_scanner_unavailable">无法打开扫码页面，请重试。</string>
+    <string name="download_time_unknown">时间未知</string>
+    <string name="download_metadata">大小：%1$s · 下载时间：%2$s</string>
+    <string name="download_status_pending">等待下载</string>
+    <string name="download_status_running">下载中</string>
+    <string name="download_status_paused">已暂停</string>
+    <string name="download_status_complete">已完成</string>
+    <string name="download_status_failed">失败：%1$s</string>
+    <string name="download_status_unavailable">不可用</string>
 </resources>

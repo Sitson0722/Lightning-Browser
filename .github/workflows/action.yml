@@ -23,6 +23,8 @@ jobs:
           java-version: 21
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
+      - name: Validate bundled blacklist
+        run: ./gradlew :app:generateBlacklistAssets --stacktrace
       - name: Build
         shell: bash
         run: |
@@ -36,8 +38,18 @@ jobs:
             echo "::error title=Gradle build failed::$summary"
           fi
           exit "$build_status"
+      - name: Upload unit test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lightning-browser-test-results-${{ github.sha }}
+          path: app/build/test-results/**/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Check
         run: ./gradlew checkSortDependencies
+      - name: Verify blacklist in APKs
+        run: python3 scripts/verify_blacklist_apks.py
       - name: Upload signed debug APK
         uses: actions/upload-artifact@v7
         with:

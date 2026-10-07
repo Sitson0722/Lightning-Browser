@@ -1,9 +1,9 @@
 package acr.browser.lightning.browser
 
+import acr.browser.lightning.browser.tab.FileUploadRequest
 import acr.browser.lightning.browser.tab.TabInitializer
 import acr.browser.lightning.browser.tab.TabModel
 import acr.browser.lightning.download.PendingDownload
-import android.content.Intent
 import android.graphics.Bitmap
 import kotlinx.coroutines.flow.Flow
 
@@ -18,18 +18,12 @@ interface BrowserContract {
     interface View {
 
         /**
-         * Show the file chooser with the provided [intent].
+         * Show the file chooser bound to its originating [request].
          */
-        fun showFileChooser(intent: Intent)
+        fun showFileChooser(request: FileUploadRequest)
 
         /** Open the camera-based QR scanner. */
         fun showQrScanner()
-
-        /** Open the system picker for an encrypted allowed-sites configuration. */
-        fun showAllowlistImporter()
-
-        /** Ask before merging a verified configuration into the stored list. */
-        fun confirmAllowlistImport(added: Int, existing: Int)
 
         /** Show non-URL scan content so the user can review and copy it. */
         fun showScannedText(text: String)
@@ -71,7 +65,7 @@ interface BrowserContract {
         /**
          * Select the tab with the provide [id] as the currently viewed tab.
          */
-        fun selectTab(id: Int): TabModel
+        fun selectTab(id: Int): TabModel?
 
         /**
          * Initialize all tabs that were previously frozen when the browser was last open, and

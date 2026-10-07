@@ -1,17 +1,19 @@
 package acr.browser.lightning.browser
 
 import acr.browser.lightning.IncognitoBrowserActivity
+import acr.browser.lightning.R
+import acr.browser.lightning.browser.access.SiteAccessPolicy
 import acr.browser.lightning.browser.cleanup.ExitCleanup
 import acr.browser.lightning.concurrency.AppCoroutineScope
 import acr.browser.lightning.di.IncognitoMode
 import acr.browser.lightning.download.FileDownloader
 import acr.browser.lightning.download.PendingDownload
 import acr.browser.lightning.extensions.copyToClipboard
+import acr.browser.lightning.extensions.toast
 import acr.browser.lightning.log.Logger
 import acr.browser.lightning.settings.activity.SettingsActivity
 import acr.browser.lightning.shortcuts.ShortcutGenerator
 import acr.browser.lightning.utils.IntentUtils
-import android.app.ActivityManager
 import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Bitmap
@@ -28,9 +30,9 @@ class BrowserNavigator @Inject constructor(
     private val logger: Logger,
     private val exitCleanup: ExitCleanup,
     @IncognitoMode private val incognitoMode: Boolean,
-    private val activityManager: ActivityManager,
     private val appCoroutineScope: AppCoroutineScope,
     private val fileDownloader: FileDownloader,
+    private val siteAccessPolicy: SiteAccessPolicy,
     private val intentUtils: IntentUtils,
     private val shortcutGenerator: ShortcutGenerator,
 ) : BrowserContract.Navigator {
@@ -50,9 +52,7 @@ class BrowserNavigator @Inject constructor(
     override suspend fun closeBrowser() {
         exitCleanup.cleanUp()
         if (incognitoMode) {
-            activityManager.appTasks
-                .first { it.taskInfo?.topActivity?.className == IncognitoBrowserActivity::class.java.name }
-                .finishAndRemoveTask()
+            activity.finishAndRemoveTask()
         } else {
             activity.finish()
         }
@@ -64,6 +64,10 @@ class BrowserNavigator @Inject constructor(
     }
 
     override fun download(pendingDownload: PendingDownload) {
+        if (!siteAccessPolicy.isUrlAllowed(pendingDownload.url)) {
+            activity.toast(R.string.message_blacklisted_site)
+            return
+        }
         appCoroutineScope.launch {
             fileDownloader.download(pendingDownload)
         }
@@ -73,9 +77,7 @@ class BrowserNavigator @Inject constructor(
         if (incognitoMode) {
             appCoroutineScope.launch {
                 exitCleanup.cleanUp()
-                activityManager.appTasks
-                    .first { it.taskInfo?.topActivity?.className == IncognitoBrowserActivity::class.java.name }
-                    .finishAndRemoveTask()
+                activity.finishAndRemoveTask()
             }
         } else {
             activity.moveTaskToBack(true)

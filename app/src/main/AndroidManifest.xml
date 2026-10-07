@@ -53,7 +53,7 @@
             android:colorMode="wideColorGamut"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard"
             android:exported="true"
-            android:launchMode="singleInstance"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.LightTheme"
             android:windowSoftInputMode="stateHidden|adjustResize">
             <intent-filter tools:ignore="AppLinkUrlError">
@@ -144,7 +144,7 @@
             android:colorMode="wideColorGamut"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard"
             android:exported="true"
-            android:launchMode="singleInstance"
+            android:launchMode="singleTask"
             android:parentActivityName="acr.browser.lightning.DefaultBrowserActivity"
             android:process=":incognito"
             android:taskAffinity="com.anthonycr.browser.AffinityIncognito"
@@ -171,6 +171,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Unlocking ScanOptions alone does not override the library's landscape declaration. -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="user"
+            android:exported="false"
+            tools:replace="android:screenOrientation" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

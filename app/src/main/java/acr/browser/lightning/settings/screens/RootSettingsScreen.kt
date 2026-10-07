@@ -15,10 +15,6 @@ class RootSettingsScreen @Inject constructor(
         title = resourceProvider.stringResource(R.string.settings),
         content = listOf(
             ClickableState(
-                title = resourceProvider.stringResource(R.string.settings_adblock),
-                onClick = ClickableOnClick.Navigate(SettingsNavigation.ADBLOCK),
-            ),
-            ClickableState(
                 title = resourceProvider.stringResource(R.string.settings_general),
                 onClick = ClickableOnClick.Navigate(SettingsNavigation.GENERAL),
             ),

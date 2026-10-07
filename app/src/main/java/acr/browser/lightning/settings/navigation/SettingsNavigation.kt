@@ -5,7 +5,6 @@ package acr.browser.lightning.settings.navigation
  */
 enum class SettingsNavigation(val parent: SettingsNavigation?) {
     ROOT(null),
-    ADBLOCK(ROOT),
     GENERAL(ROOT),
     BOOKMARK(ROOT),
     DISPLAY(ROOT),

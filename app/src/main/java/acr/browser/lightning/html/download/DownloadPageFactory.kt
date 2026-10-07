@@ -24,9 +24,15 @@ import acr.browser.lightning.utils.ThreadSafeFileProvider
 import android.app.Application
 import android.app.DownloadManager
 import android.database.Cursor
+import android.provider.MediaStore
+import android.text.format.Formatter
+import androidx.core.net.toUri
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileWriter
+import java.text.DateFormat
+import java.util.Date
+import org.jsoup.nodes.Element
 import javax.inject.Inject
 
 /**
@@ -74,7 +80,10 @@ class DownloadPageFactory @Inject constructor(
                                 resolvedDownload.openUri?.let { attr("href", it) }
                                     ?: removeAttr("href")
                             }
-                            id("title") { text(createFileTitle(download)) }
+                            id("title") { text(download.title) }
+                            findId("url").before(
+                                Element("p").attr("class", "font").text(createMetadata(download))
+                            )
                             id("url") {
                                 text("${resolvedDownload.statusText} — ${download.url}")
                             }
@@ -95,22 +104,42 @@ class DownloadPageFactory @Inject constructor(
         return File(generatedHtml, FILENAME)
     }
 
-    private fun createFileTitle(downloadItem: DownloadEntry): String {
-        val contentSize = if (downloadItem.contentSize.isNotBlank()) {
-            "[${downloadItem.contentSize}]"
+    private fun createMetadata(download: DownloadEntry): String {
+        val size = if (download.sizeBytes >= 0) {
+            Formatter.formatFileSize(application, download.sizeBytes)
         } else {
-            ""
+            download.contentSize.takeIf(String::isNotBlank)
+                ?: application.getString(R.string.unknown_size)
         }
-
-        return "${downloadItem.title} $contentSize"
+        val time = if (download.downloadedAt > 0) {
+            DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM)
+                .format(Date(download.downloadedAt))
+        } else {
+            application.getString(R.string.download_time_unknown)
+        }
+        return application.getString(R.string.download_metadata, size, time)
     }
 
     private fun DownloadEntry.resolveDownload(): ResolvedDownload {
         if (downloadManagerId == DownloadEntry.MEDIA_STORE_DOWNLOAD_ID) {
+            val actualSize = try {
+                application.contentResolver.query(
+                    location.toUri(), arrayOf(MediaStore.MediaColumns.SIZE), null, null, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
+                }
+            } catch (_: SecurityException) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
             return ResolvedDownload(
-                entry = this,
-                openUri = location,
-                statusText = application.getString(R.string.download_status_complete)
+                entry = copy(sizeBytes = actualSize ?: sizeBytes),
+                openUri = location.takeIf { actualSize != null },
+                statusText = application.getString(
+                    if (actualSize != null) R.string.download_status_complete
+                    else R.string.download_status_unavailable
+                )
             )
         }
         if (downloadManagerId < 0L) {
@@ -118,7 +147,8 @@ class DownloadPageFactory @Inject constructor(
                 it.removePrefix(FILE).let(::File).exists()
             }
             return ResolvedDownload(
-                entry = this,
+                entry = copy(sizeBytes = legacyLocation?.removePrefix(FILE)?.let(::File)?.length()
+                    ?: sizeBytes),
                 openUri = legacyLocation,
                 statusText = if (legacyLocation != null) {
                     application.getString(R.string.download_status_complete)
@@ -137,13 +167,18 @@ class DownloadPageFactory @Inject constructor(
         } else {
             null
         }
-        return ResolvedDownload(this, openUri, systemStatus.displayText())
+        return ResolvedDownload(
+            copy(sizeBytes = systemStatus.totalBytes.takeIf { it >= 0 } ?: sizeBytes),
+            openUri,
+            systemStatus.displayText()
+        )
     }
 
     private fun Cursor.downloadStatus(): SystemDownloadStatus = if (moveToFirst()) {
         SystemDownloadStatus(
             status = getInt(getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS)),
             reason = getInt(getColumnIndexOrThrow(DownloadManager.COLUMN_REASON)),
+            totalBytes = getLong(getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)),
         )
     } else {
         SystemDownloadStatus.Unavailable
@@ -180,7 +215,11 @@ class DownloadPageFactory @Inject constructor(
         val statusText: String,
     )
 
-    private data class SystemDownloadStatus(val status: Int, val reason: Int) {
+    private data class SystemDownloadStatus(
+        val status: Int,
+        val reason: Int,
+        val totalBytes: Long = -1L,
+    ) {
         companion object {
             val Unavailable = SystemDownloadStatus(status = -1, reason = 0)
         }
