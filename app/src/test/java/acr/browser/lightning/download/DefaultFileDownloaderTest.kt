@@ -55,7 +55,8 @@ class DefaultFileDownloaderTest {
                 .body(payload.toResponseBody()).build()
         }.build()
         val dispatchers = FakeCoroutineDispatchers(testScheduler)
-        DownloadsDatabase(app, dispatchers).use { database ->
+        val database = DownloadsDatabase(app, dispatchers)
+        try {
             val downloader = DefaultFileDownloader(app, NoOpLogger(), database, DefaultResourceProvider(app),
                 app.getSystemService(DownloadManager::class.java), dispatchers, CompletableDeferred(client),
                 UserPreferencesDataStore(app, ScreenSize(app)))
@@ -71,6 +72,8 @@ class DefaultFileDownloaderTest {
             assertThat(provider.values.getAsString(MediaStore.Downloads.MIME_TYPE)).isEqualTo("text/markdown")
             assertThat(provider.values.getAsInteger(MediaStore.Downloads.IS_PENDING)).isZero()
             assertThat(provider.file.readBytes()).isEqualTo(payload)
+        } finally {
+            database.close()
         }
     }
 
@@ -81,7 +84,8 @@ class DefaultFileDownloaderTest {
         app.deleteDatabase("downloadManager")
         val dispatchers = FakeCoroutineDispatchers(testScheduler)
         val client = OkHttpClient.Builder().addInterceptor { error("No HEAD required with supplied metadata") }.build()
-        DownloadsDatabase(app, dispatchers).use { database ->
+        val database = DownloadsDatabase(app, dispatchers)
+        try {
             val manager = app.getSystemService(DownloadManager::class.java)
             val downloader = DefaultFileDownloader(app, NoOpLogger(), database, DefaultResourceProvider(app),
                 manager, dispatchers, CompletableDeferred(client), UserPreferencesDataStore(app, ScreenSize(app)))
@@ -97,6 +101,8 @@ class DefaultFileDownloaderTest {
                 assertThat(cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TITLE)))
                     .isEqualTo("结果.md")
             }
+        } finally {
+            database.close()
         }
     }
 
