@@ -102,6 +102,7 @@ class BrowserPresenter @Inject constructor(
 
     private var view: BrowserContract.View? = null
     private var currentTab: TabModel? = null
+    private val downloadPageOrigins = mutableMapOf<Int, Int>()
     private var currentFolder: Bookmark.Folder = Bookmark.Folder.Root
     private var currentBookmarks: List<Bookmark> = emptyList()
     private var pendingAction: BrowserContract.Action.LoadUrl? = null
@@ -433,7 +434,7 @@ class BrowserPresenter @Inject constructor(
                     themeColor = themeColor,
                     isRefresh = progress == 100,
                     isForwardEnabled = canGoForward,
-                    isBackEnabled = canGoBack,
+                    isBackEnabled = canGoBack || url.isDownloadsUrl(),
                     sslState = sslState,
                     progress = progress,
                     isBookmarked = isBookmark,
@@ -617,11 +618,17 @@ class BrowserPresenter @Inject constructor(
                 tabType = TabModel.Type.POP_UP
             )
 
-            MenuSelection.DOWNLOADS -> createNewTabAndSelect(
-                tabInitializer = downloadPageInitializer,
-                shouldSelect = true,
-                tabType = TabModel.Type.POP_UP
-            )
+            MenuSelection.DOWNLOADS -> {
+                val originId = currentTab?.id
+                createNewTabAndSelect(
+                    tabInitializer = downloadPageInitializer,
+                    shouldSelect = true,
+                    tabType = TabModel.Type.POP_UP
+                )
+                currentTab?.id?.let { downloadId ->
+                    originId?.let { downloadPageOrigins[downloadId] = it }
+                }
+            }
 
             MenuSelection.FIND -> {
                 currentTab?.find("")
@@ -770,6 +777,7 @@ class BrowserPresenter @Inject constructor(
         val currentTabId = currentTab?.id
         val needToSelectNextTab = id == currentTabId
 
+        downloadPageOrigins.remove(id)
         model.deleteTab(id)
         state.updateSelf { updateTabViewState() }
         if (needToSelectNextTab) {
@@ -823,6 +831,7 @@ class BrowserPresenter @Inject constructor(
             }
 
             currentTab?.canGoBack() == true -> currentTab?.goBack()
+            currentTab?.url.isDownloadsUrl() -> closeDownloadsPage()
             currentTab?.canGoBack() == false -> if (incognitoMode) {
                 currentTab?.id?.let {
                     state.updateSelf { copy(dialog = BrowserViewState.Dialogs.CloseBrowser(it)) }
@@ -839,10 +848,24 @@ class BrowserPresenter @Inject constructor(
         }
     }
 
-    private fun onBackClick() {
+    private suspend fun onBackClick() {
         if (currentTab?.canGoBack() == true) {
             currentTab?.goBack()
+        } else if (currentTab?.url.isDownloadsUrl()) {
+            closeDownloadsPage()
         }
+    }
+
+    private suspend fun closeDownloadsPage() {
+        val downloadTab = currentTab ?: return
+        val originId = downloadPageOrigins.remove(downloadTab.id)
+        model.returnFromDownloads(
+            downloadTab.id,
+            originId,
+            select = { selectTabById(it, focusTab = false) },
+            openHome = { createNewTabAndSelect(homePageInitializer, shouldSelect = true) },
+        )
+        state.updateSelf { updateTabViewState() }
     }
 
     private fun onForwardClick() {

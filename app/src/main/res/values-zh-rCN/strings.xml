@@ -341,4 +341,12 @@
     <string name="message_allowlist_save_failed">无法保存导入的网站</string>
     <string name="message_file_chooser_unavailable">无法打开文件选择器，请重试。</string>
     <string name="message_qr_scanner_unavailable">无法打开扫码页面，请重试。</string>
+    <string name="download_time_unknown">时间未知</string>
+    <string name="download_metadata">大小：%1$s · 下载时间：%2$s</string>
+    <string name="download_status_pending">等待下载</string>
+    <string name="download_status_running">下载中</string>
+    <string name="download_status_paused">已暂停</string>
+    <string name="download_status_complete">已完成</string>
+    <string name="download_status_failed">失败：%1$s</string>
+    <string name="download_status_unavailable">不可用</string>
 </resources>

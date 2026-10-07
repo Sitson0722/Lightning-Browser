@@ -307,4 +307,6 @@
     <string name="message_allowlist_save_failed">無法儲存匯入的網站</string>
     <string name="message_file_chooser_unavailable">無法開啟檔案選擇器，請重試。</string>
     <string name="message_qr_scanner_unavailable">無法開啟掃碼頁面，請重試。</string>
+    <string name="download_time_unknown">時間未知</string>
+    <string name="download_metadata">大小：%1$s · 下載時間：%2$s</string>
 </resources>
